@@ -20,9 +20,3 @@ def extract_title(text):
             if start_quote != -1 and end_quote != -1 and end_quote > start_quote:
                 return line[start_quote + 1:end_quote]
     return None
-
-def extract_edited_scenes_raw_blocks(text, separator="\n\n"):
-    """Extracts full raw scene blocks (starting with **Scene X:**) and joins them into one string."""
-    pattern = r"(\*\*Scene \d+:\*\*.*?)(?=\n\*\*Scene \d+:\*\*|\Z)"
-    matches = re.findall(pattern, text, re.DOTALL)
-    return separator.join(match.strip() for match in matches)

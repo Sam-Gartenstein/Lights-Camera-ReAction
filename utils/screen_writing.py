@@ -1,10 +1,5 @@
-from .rag_utils import explain_rag_usage
-from .character_management import (
-    analyze_characters,
-    retrieve_character_history,
-    verify_character_consistency,
-    plan_character_arcs
-)
+
+#from rag_utils import explain_rag_usage
 from datetime import timedelta
 import numpy as np
 
@@ -78,94 +73,46 @@ End the scene cleanly without cutting off mid-conversation.
     return f"{timestamp_text}\n{response.choices[0].message.content.strip()}"
 
 
-def generate_scene_with_context(
+def generate_scene(
     client,
-    sitcom_title,
-    scene_description,
-    scene_index,
-    vector_metadata,
-    embedding_model,
-    top_k=3,
-    line_target=(50, 70),
-    average_scene_minutes=2.5
-):
+    scene_plan: str,
+    scene_number: int
+) -> str:
     """
-    Generates a sitcom scene using ReAct RAG for better character consistency.
+    Generates a new sitcom scene based on a structured scene plan.
+
+    Args:
+        client: OpenAI client for prompting.
+        scene_plan: The structured scene plan from the ScenePlannerAgent.
+        scene_number: The number for the next scene (e.g., 6 if last scene was 5).
+
+    Returns:
+        - new_scene_description (str)
     """
-    print(f"\n[Scene {scene_index+1}] Starting ReAct RAG process...")
+    prompt = f"""
+You are a sitcom scene writer.
 
-    # Step 1: Think - Analyze what characters are in the scene
-    print("1. Analyzing characters in scene...")
-    characters = analyze_characters(client, scene_description)
-    print(f"   Identified characters: {', '.join(characters)}")
+Below is the Scene Plan for Scene {scene_number}:
 
-    # Step 2: Act - Retrieve character histories
-    print("2. Retrieving character histories...")
-    character_profiles = {}
-    for character in characters:
-        profile = retrieve_character_history(
-            client,
-            character,
-            vector_metadata,
-            embedding_model
-        )
-        character_profiles[character] = profile
-        print(f"   Retrieved profile for {character}")
+{scene_plan}
 
-    # Step 3: Observe - Verify consistency
-    print("3. Verifying character consistency...")
-    is_consistent, consistency_report = verify_character_consistency(
-        client,
-        character_profiles,
-        scene_description
-    )
-    print(f"   Consistency check: {'PASSED' if is_consistent else 'NEEDS REVISION'}")
+Tasks:
+- Write a 2–3 minute sitcom scene based on this plan.
+- Make sure to hit the specified Character Goals and Comedic Goal.
+- Implement the Creative Suggestion naturally in the scene.
+- Keep the tone light, funny, and emotionally grounded.
+- Focus on dialogue and natural actions between characters.
+- Include character names clearly when they speak or act.
+- Keep the pacing quick — no more than 50–70 lines.
 
-    # Step 4: Think - Plan character arcs
-    print("4. Planning character arcs...")
-    arc_plan = plan_character_arcs(
-        client,
-        character_profiles,
-        scene_description,
-        scene_index + 1
-    )
-    print("   Character arcs planned")
-
-    # Combine all context for scene generation
-    rag_context = f"""
-Character Profiles and History:
-{chr(10).join(f'{char}:{profile["profile"]}' for char, profile in character_profiles.items())}
-
-Character Arc Plan:
-{arc_plan}
-
-Consistency Requirements:
-{consistency_report}
+Start writing the full scene now:
 """
 
-    # Generate the scene with enhanced character context
-    script = generate_scene_1_script(
-        client=client,
-        sitcom_title=sitcom_title,
-        scene_description=scene_description,
-        scene_index=scene_index,
-        rag_context=rag_context,
-        line_target=line_target,
-        average_scene_minutes=average_scene_minutes
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7
     )
 
-    # Generate explanation of RAG usage
-    explanation = explain_rag_usage(
-        client=client,
-        sitcom_title=sitcom_title,
-        scene_script=script,
-        rag_context=rag_context,
-        scene_index=scene_index,
-        used_context_summaries=[],  # We're using character profiles instead
-        context_method="ReAct RAG with character consistency"
-    )
-
-    print(f"\n[Scene {scene_index+1}] ReAct RAG process complete.")
-    print(f"[Scene {scene_index+1}] Explanation of character consistency:\n{explanation}\n")
-
-    return script
+    new_scene_description = response.choices[0].message.content.strip()
+    return new_scene_description
