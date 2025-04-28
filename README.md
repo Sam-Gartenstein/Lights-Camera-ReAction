@@ -20,7 +20,7 @@ After generation, each scene is **summarized and stored in a vector database**, 
 By combining **structured agent workflows** and **retrieval-augmented memory**, we bring sitcom worlds to life — one coherent, character-driven scene at a time.
 
 
--------
+
 
 ## TODO:
 
