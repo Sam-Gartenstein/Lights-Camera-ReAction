@@ -1,31 +1,40 @@
 
 from typing import Dict, List, Tuple
 
-def analyze_characters(
+
+def characters_extraction(
     client,
     scene_description: str,
     prior_scene_metadata: List[Dict],
-    scene_number: int = None
+    scene_number: int = None,
+    num_scenes: int = 3
 ) -> Dict[str, List[str]]:
     """
-    Extracts characters from previous scenes and the current scene description separately.
+    Extracts characters from previous scenes and the current scene description,
+    and identifies former characters along with the scene numbers in which they appeared.
 
     Returns:
         Dictionary with:
             - 'prior_characters': list of characters from prior scenes
             - 'current_scene_characters': list of characters in the new scene
             - 'new_characters': list of newly introduced characters
+            - 'former_characters': list of characters with prior scene numbers
             - 'scene_number': current scene number
     """
-    # 1. Extract prior characters
-    prior_characters = set()
-    for meta in prior_scene_metadata:
-        for char in meta.get("characters", []):
-            prior_characters.add(char)
 
+    # Filter to last `num_scenes` prior scenes
+    recent_scenes = prior_scene_metadata[-num_scenes:]
+
+    # Map prior character appearances by scene number
+    character_scene_map = {}
+    for meta in recent_scenes:
+        for char in meta.get("characters", []):
+            character_scene_map.setdefault(char, []).append(meta.get("scene_number", "?"))
+
+    prior_characters = set(character_scene_map.keys())
     prior_characters_text = ", ".join(sorted(prior_characters)) if prior_characters else "None"
 
-    # 2. Build extraction prompt
+    # Build prompt
     prompt = f"""
 You are a sitcom character extraction assistant.
 
@@ -34,13 +43,17 @@ Previously established characters: {prior_characters_text}
 Given the following new scene description, identify:
 1. All characters involved in the scene.
 2. Which characters are NEW (not listed among previously established characters).
+3. Which characters are NOT in this scene but appeared in the last {num_scenes} scenes.
+   List their names and the scene numbers they appeared in. Example format:
+   Former Characters: [Rhea (3, 4, 5), Felix (5)]
 
 Scene Description:
 {scene_description}
 
-Format exactly:
+Respond exactly in this format:
 Characters: [comma-separated list]
 New Characters: [comma-separated list]
+Former Characters: [comma-separated list with scene numbers]
 """
 
     response = client.chat.completions.create(
@@ -54,23 +67,24 @@ New Characters: [comma-separated list]
     # Parse output
     current_scene_characters = []
     new_characters = []
+    former_characters = []
 
     for line in result.split("\n"):
         if line.strip().startswith("Characters:"):
-            chars_text = line.split(":", 1)[1].strip()
-            if chars_text.startswith("[") and chars_text.endswith("]"):
-                chars_text = chars_text[1:-1]
+            chars_text = line.split(":", 1)[1].strip().strip("[]")
             current_scene_characters = [char.strip() for char in chars_text.split(",") if char.strip()]
         elif line.strip().startswith("New Characters:"):
-            new_chars_text = line.split(":", 1)[1].strip()
-            if new_chars_text.startswith("[") and new_chars_text.endswith("]"):
-                new_chars_text = new_chars_text[1:-1]
+            new_chars_text = line.split(":", 1)[1].strip().strip("[]")
             new_characters = [char.strip() for char in new_chars_text.split(",") if char.strip()]
+        elif line.strip().startswith("Former Characters:"):
+            former_chars_text = line.split(":", 1)[1].strip().strip("[]")
+            former_characters = [char.strip() for char in former_chars_text.split(",") if char.strip()]
 
     return {
         "prior_characters": sorted(list(prior_characters)),
         "current_scene_characters": current_scene_characters,
         "new_characters": new_characters,
+        "former_characters": former_characters,
         "scene_number": scene_number
     }
 
@@ -80,58 +94,67 @@ def retrieve_character_history(
     character: str,
     vector_metadata: List[Dict],
     current_scene_description: str,
-    max_scenes: int = 3
+    num_scenes: int = 1
 ) -> Dict:
     """
-    Retrieves or responsibly builds character history from prior scenes or current scene description.
+    Retrieves or builds a character history using prior scenes or the current scene.
 
     Args:
         client: OpenAI client.
-        character: Character name.
+        character: Character name to track.
         vector_metadata: List of prior scene metadata.
-        current_scene_description: Full description of the new scene.
-        max_scenes: Maximum number of prior scenes to retrieve (default 3).
+        current_scene_description: Current scene description.
+        num_scenes: Number of scenes to use for reasoning (default 3).
 
     Returns:
-        Dict containing character profile and source summaries.
+        Dict with character profile and source summaries.
     """
-    # Filter scenes where the character is explicitly listed
+
+    # Filter scenes where character appears
     relevant_scenes = [meta for meta in vector_metadata if character in meta.get("characters", [])]
-    relevant_summaries = [scene["summary"] for scene in relevant_scenes][-max_scenes:]
+    recent_relevant_scenes = relevant_scenes[-num_scenes:]
+    relevant_summaries = [scene.get("summary", "") for scene in recent_relevant_scenes]
 
     if relevant_summaries:
-        context = "\n".join(relevant_summaries)
+        # Annotate each summary with scene number for better tracing
+        labeled_summaries = "\n\n".join([
+            f"Scene {scene.get('scene_number', '?')}:\n{scene.get('summary', '').strip()}"
+            for scene in recent_relevant_scenes
+        ])
+
         prompt = f"""
-Analyze the following previous scenes to build a full character profile for {character}.
+You are a sitcom character analyst.
+
+Use the following prior scenes to build a detailed and **explicitly grounded** character profile for: {character}
 
 Scenes:
-{context}
+{labeled_summaries}
 
-Profile must cover:
-- Personality traits
-- Speaking style and quirks
-- Key relationships
-- Running jokes or behaviors
-- Emotional arc so far
+Your profile must include:
+1. Personality traits — derived from specific scenes. Mention which scene they appeared in.
+2. Speaking style and quirks — cite scene-based examples.
+3. Key relationships — who are they close to or in conflict with? Base this only on interactions in the given scenes.
+4. Running jokes or behaviors — describe only if patterns emerge across scenes.
+5. Emotional arc — explain how their behavior or role has changed across scenes (reference scene numbers clearly).
 
-Format the profile clearly.
+Do not invent any traits or backstories not present in the text.
+Your output should show clear reasoning based on specific scene descriptions or numbers.
+Format clearly.
 """
     else:
         prompt = f"""
 There are no previous scenes involving the character {character}.
 
-Here is the description of the current scene where {character} appears:
+Here is the current scene description:
 {current_scene_description}
 
-Tasks:
-- Extract any clear **personality traits** based only on behavior or description.
-- Extract **speaking style and quirks** based only on dialogue or description.
-- Extract **relationships only to characters explicitly present in this scene** (no outside inventions).
-- DO NOT create emotional arcs.
-- DO NOT invent history, backstory, or relationships not supported by the scene.
+Your task:
+- Identify personality traits based only on this scene’s behavior or description.
+- Note speaking style and quirks if any are evident.
+- Mention relationships **only** with characters in this scene.
+- Do not make up emotional arcs or traits not found in the text.
 
-If there is not enough information, say so explicitly.
-
+If there is not enough evidence for any part, say so directly.
 Format clearly and label each section.
 """
 
@@ -148,13 +171,27 @@ Format clearly and label each section.
     }
 
 
+
 def verify_character_consistency(
     client,
     character_profiles: Dict[str, Dict],
-    scene_description: str
+    scene_description: str,
+    num_scenes: int = 1
 ) -> Tuple[bool, str]:
     """
-    Verifies if the upcoming scene's character actions match established traits.
+    Verifies if the upcoming scene's character actions match established traits,
+    based on the last `num_scenes` scenes.
+
+    Args:
+        client: OpenAI client.
+        character_profiles: Dict of character -> {'profile': ..., 'source_summaries': ...}.
+        scene_description: Planned scene.
+        num_scenes: Number of past scenes considered for context (default 1).
+
+    Returns:
+        Tuple of:
+            - Boolean indicating consistency
+            - Raw explanation from the model
     """
 
     profiles_text = "\n\n".join([
@@ -165,44 +202,59 @@ def verify_character_consistency(
     prompt = f"""
 You are a sitcom character consistency checker.
 
-Character Profiles:
+Character Profiles (from the last {num_scenes} scene{'s' if num_scenes > 1 else ''}):
 {profiles_text}
 
 Planned Scene Description:
 {scene_description}
 
 Check:
-- Is each character behaving consistently with their established profile?
-- Are their speaking patterns, emotions, and relationships logical based on their profile?
-- Identify any contradictions clearly.
+- Is each character behaving consistently with their established personality, emotional arc, and speaking style?
+- Are their actions and dialogue logical based on traits or relationships from the last {num_scenes} scene{'s' if num_scenes > 1 else ''}?
+- Identify contradictions based on past scenes (not general sitcom logic).
+- Do not invent missing motivations — point them out instead.
 
 Respond exactly in this format:
 1. Consistency Verdict (Yes/No)
-2. Short Explanation (max 5 lines)
-3. Specific Suggestions if inconsistencies exist
+2. Short Explanation Why (max 5 lines)
 """
 
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0  # deterministic
+        temperature=0
     )
 
     result = response.choices[0].message.content.strip()
-
-    # Parse verdict
     is_consistent = "yes" in result.lower().split("\n")[0].lower()
 
     return is_consistent, result
 
 
+
 def recommend_character_interactions(
     client,
     character_profiles: Dict[str, Dict],
-    scene_description: str
+    scene_description: str,
+    num_scenes: int = 1,
+    is_consistent: bool = True,
+    consistency_result: str = ""
 ) -> str:
     """
-    Recommends how to maximize character interactions in the given scene, limited to 3–4 realistic suggestions.
+    Recommends two grounded, meaningful character interactions for the given scene,
+    based on the last `num_scenes` scenes — or the current description if it's the first scene.
+    If the scene is inconsistent, suggestions may aim to resolve or revise those inconsistencies.
+
+    Args:
+        client: OpenAI client.
+        character_profiles: Dictionary mapping character names to profiles (built from summaries).
+        scene_description: Description of the current scene.
+        num_scenes: Number of previous scenes to consider (default 1).
+        is_consistent: Whether the scene passed the character consistency check.
+        consistency_result: The LLM’s consistency explanation/suggestions, if inconsistent.
+
+    Returns:
+        A formatted string with two interaction suggestions and explicit justification.
     """
 
     profiles_text = "\n\n".join([
@@ -210,28 +262,39 @@ def recommend_character_interactions(
         for char, profile_data in character_profiles.items()
     ])
 
-    prompt = f"""
-You are a sitcom character interaction enhancement assistant.
+    # Add consistency context if relevant
+    consistency_context = (
+        f"\n\nNote: The current scene was flagged as inconsistent.\n"
+        f"Here is the critique provided:\n{consistency_result.strip()}\n\n"
+        f"Use this to help adjust or refine the interactions to improve character alignment."
+        if not is_consistent else ""
+    )
 
-Character Profiles:
+    prompt = f"""
+You are a sitcom interaction strategist.
+
+You will suggest **exactly two meaningful character interactions** for the following scene.
+
+Character Profiles (based on {'the prior scene' if num_scenes == 1 else f'the last {num_scenes} scenes'}):
 {profiles_text}
 
 Planned Scene Description:
 {scene_description}
+{consistency_context}
 
-Tasks:
-- Suggest ways to **maximize character interactions** in this scene.
-- Base suggestions strictly on character personalities, relationships, and behavior styles.
-- Limit yourself to 3 or 4 **specific, realistic** interaction ideas that would naturally fit within a 2–3 minute sitcom scene.
-- Ideas can include banter, conflict, tension, emotional beats, callbacks to running jokes, or character quirks.
-- Keep the scene grounded, funny, and emotionally resonant without overcrowding it.
+Instructions:
+- Recommend two character interactions that reflect what has happened in the {'prior scene' if num_scenes == 1 else f'last {num_scenes} scenes'}.
+- Refer explicitly to scene numbers when explaining why an interaction fits.  
+  Example: "In Scene 2, Jimmy promised to change. This scene builds on that."
+- If a character is new or has no past context, use the current scene only.
+- If the scene has inconsistencies, your suggestions should help resolve those problems while staying true to the profiles.
+- Each recommendation must include a short explanation of **why** it fits, citing specific scenes or behaviors.
+- Write each suggestion in about 3 sentences.
 
-Format:
+Format your response like this:
 Interaction Recommendations:
-- [Suggestion 1]
-- [Suggestion 2]
-- [Suggestion 3]
-- [Suggestion 4] (optional)
+1. [Suggestion] — (justification referencing prior scene(s))
+2. [Suggestion] — (justification referencing prior scene(s))
 """
 
     response = client.chat.completions.create(
