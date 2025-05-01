@@ -26,6 +26,7 @@ By combining **structured agent workflows** and **retrieval-augmented memory**, 
 
 - Add in description of workflow
 - Perhaps add in an editor agent that edits the previous scene (We have multiple for planning)
-- Make sure the agents are reading in the last several scenes, as well as make sure it tells us which scenes it's reflecting back on
 - **IMPORTANT** When creating editor, perhaps move `verify_character_consistency` to an Editor Agent
+- Continue to refine Character Agent so it explicitly refers to prior scenes!
+- Perhaps make function for adding metadata to vector database
    
