@@ -30,4 +30,12 @@ By combining **structured agent workflows** and **retrieval-augmented memory**, 
 - Continue to refine Character Agent so it explicitly refers to prior scenes!
 - Perhaps make function for adding metadata to vector database
 - Make sure the script doesn't have "Fade Out" 
-   
+
+## Plan For Creating Baseline
+
+- Modify Generate Scene Prompt so it just takes in a description and recent scenes
+- Depenidng on the max number of tokens the prompt can take in, lets cap it at 3 scenes max
+   - First scene takes in description only
+   - Scene 2 takes in descreption and Scene 1
+   - Scene 3 takes in descreption and Scenes 2 and 1
+   - Scene 4 takes in descreption and Scenes 3, 2, and 1 so and so forth
