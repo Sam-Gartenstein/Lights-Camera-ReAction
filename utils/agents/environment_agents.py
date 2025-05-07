@@ -1,6 +1,6 @@
 
 from typing import List, Tuple
-from environment_helpers import (
+from utils.agents.environment_helpers import (
     analyze_environment,
     verify_environment_transition,
     suggest_environment_details

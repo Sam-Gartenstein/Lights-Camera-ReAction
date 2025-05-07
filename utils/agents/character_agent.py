@@ -1,5 +1,5 @@
 
-from character_helpers import (
+from utils.agents.character_helpers import (
     characters_extraction,
     retrieve_character_history,
     verify_character_consistency,
