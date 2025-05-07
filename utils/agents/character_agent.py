@@ -29,10 +29,14 @@ class CharacterAgent:
         self.internal_thoughts.append(f"Think: Identified characters {character_info['current_scene_characters']} in Scene {scene_number}.")
         return character_info
 
-    def act(self, character_info: Dict, scene_description: str) -> Dict[str, Dict]:
+    def act(self, character_info: Dict, scene_description: str, scene_number: int) -> Dict[str, Dict]:
         """
         Act step: Retrieve character histories from previous scenes.
         """
+        start_scene = max(1, scene_number - self.num_scenes)
+        scene_range = list(range(start_scene, scene_number))
+        print(f"📚 Retrieving script metadata for scene(s): {scene_range}")
+
         character_histories = {}
         for character in character_info["current_scene_characters"]:
             profile = retrieve_character_history(
@@ -78,9 +82,23 @@ class CharacterAgent:
     def run(self, scene_description: str, scene_number: int) -> Tuple[Dict[str, Dict], bool, str, str, List[str]]:
         """
         Full ReAct cycle: Think ➔ Act ➔ Observe ➔ Recommend
+
+        This method coordinates the four main character analysis steps:
+        - Think: Uses `characters_extraction` to identify characters in the scene.
+        - Act: Uses `retrieve_character_history` to build profiles from previous summaries.
+        - Observe: Uses `verify_character_consistency` to check character behavior.
+        - Recommend: Uses `recommend_character_interactions` to suggest grounded or corrective dynamics.
+
+        Returns:
+            A tuple containing:
+            - character_histories (dict)
+            - is_consistent (bool)
+            - explanation (str)
+            - recommendations (str)
+            - internal_thoughts (list of str)
         """
         character_info = self.think(scene_description, scene_number)
-        character_histories = self.act(character_info, scene_description)
+        character_histories = self.act(character_info, scene_description, scene_number)
         is_consistent, explanation = self.observe(character_histories, scene_description)
         recommendations = self.recommend(character_histories, scene_description, is_consistent, explanation)
         return character_histories, is_consistent, explanation, recommendations, self.internal_thoughts

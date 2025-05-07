@@ -36,7 +36,7 @@ def characters_extraction(
 
     # Build prompt
     prompt = f"""
-You are a sitcom character extraction assistant.
+You are the Writers' Assistant on the sitcom writing team.
 
 Previously established characters: {prior_characters_text}
 
@@ -89,6 +89,7 @@ Former Characters: [comma-separated list with scene numbers]
     }
 
 
+
 def retrieve_character_history(
     client,
     character: str,
@@ -104,10 +105,13 @@ def retrieve_character_history(
         character: Character name to track.
         vector_metadata: List of prior scene metadata.
         current_scene_description: Current scene description.
-        num_scenes: Number of scenes to use for reasoning (default 3).
+        num_scenes: Number of scenes to use for reasoning (default = 1).
 
     Returns:
-        Dict with character profile and source summaries.
+        Dict with character profile and source summaries:
+            - 'character': character name
+            - 'profile': full character profile generated from scenes
+            - 'source_summaries': list of scene summaries used as input
     """
 
     # Filter scenes where character appears
@@ -123,9 +127,9 @@ def retrieve_character_history(
         ])
 
         prompt = f"""
-You are a sitcom character analyst.
+You are the Script Supervisor on the sitcom writing team.
 
-Use the following prior scenes to build a detailed and **explicitly grounded** character profile for: {character}
+Based on the following prior scenes, build a detailed and **explicitly grounded** character profile for: {character}
 
 Scenes:
 {labeled_summaries}
@@ -143,6 +147,8 @@ Format clearly.
 """
     else:
         prompt = f"""
+You are the Script Supervisor on the sitcom writing team.
+
 There are no previous scenes involving the character {character}.
 
 Here is the current scene description:
@@ -171,7 +177,6 @@ Format clearly and label each section.
     }
 
 
-
 def verify_character_consistency(
     client,
     character_profiles: Dict[str, Dict],
@@ -179,19 +184,21 @@ def verify_character_consistency(
     num_scenes: int = 1
 ) -> Tuple[bool, str]:
     """
-    Verifies if the upcoming scene's character actions match established traits,
-    based on the last `num_scenes` scenes.
+    Verifies whether the upcoming scene's character actions are consistent with their
+    previously established traits and emotional arcs based on the last `num_scenes` scenes.
 
     Args:
         client: OpenAI client.
-        character_profiles: Dict of character -> {'profile': ..., 'source_summaries': ...}.
-        scene_description: Planned scene.
-        num_scenes: Number of past scenes considered for context (default 1).
+        character_profiles: Dictionary mapping character names to a dictionary with:
+            - 'profile': Generated character profile text
+            - 'source_summaries': List of scene summaries used to build the profile
+        scene_description: The planned scene description to evaluate.
+        num_scenes: Number of past scenes considered for character context (default = 1).
 
     Returns:
         Tuple of:
-            - Boolean indicating consistency
-            - Raw explanation from the model
+            - Boolean indicating whether the scene is consistent (True) or not (False)
+            - Model-generated explanation justifying the decision
     """
 
     profiles_text = "\n\n".join([
@@ -200,7 +207,7 @@ def verify_character_consistency(
     ])
 
     prompt = f"""
-You are a sitcom character consistency checker.
+You are the Head Writer on the sitcom writing team.
 
 Character Profiles (from the last {num_scenes} scene{'s' if num_scenes > 1 else ''}):
 {profiles_text}
@@ -211,7 +218,7 @@ Planned Scene Description:
 Check:
 - Is each character behaving consistently with their established personality, emotional arc, and speaking style?
 - Are their actions and dialogue logical based on traits or relationships from the last {num_scenes} scene{'s' if num_scenes > 1 else ''}?
-- Identify contradictions based on past scenes (not general sitcom logic).
+- Identify contradictions based strictly on past scenes — not general sitcom logic or assumed character arcs.
 - Do not invent missing motivations — point them out instead.
 
 Respond exactly in this format:
@@ -231,7 +238,6 @@ Respond exactly in this format:
     return is_consistent, result
 
 
-
 def recommend_character_interactions(
     client,
     character_profiles: Dict[str, Dict],
@@ -249,12 +255,13 @@ def recommend_character_interactions(
         client: OpenAI client.
         character_profiles: Dictionary mapping character names to profiles (built from summaries).
         scene_description: Description of the current scene.
-        num_scenes: Number of previous scenes to consider (default 1).
+        num_scenes: Number of previous scenes to consider (default = 1).
         is_consistent: Whether the scene passed the character consistency check.
         consistency_result: The LLM’s consistency explanation/suggestions, if inconsistent.
 
     Returns:
-        A formatted string with two interaction suggestions and explicit justification.
+        A formatted string containing two recommended character interactions,
+        each with a justification based on prior context and scene summaries.
     """
 
     profiles_text = "\n\n".join([
@@ -271,7 +278,7 @@ def recommend_character_interactions(
     )
 
     prompt = f"""
-You are a sitcom interaction strategist.
+You are the Co-Executive Producer on the sitcom writing team.
 
 You will suggest **exactly two meaningful character interactions** for the following scene.
 
@@ -284,12 +291,12 @@ Planned Scene Description:
 
 Instructions:
 - Recommend two character interactions that reflect what has happened in the {'prior scene' if num_scenes == 1 else f'last {num_scenes} scenes'}.
-- Refer explicitly to scene numbers when explaining why an interaction fits.  
+- Refer explicitly to scene numbers when explaining why an interaction fits.
   Example: "In Scene 2, Jimmy promised to change. This scene builds on that."
 - If a character is new or has no past context, use the current scene only.
 - If the scene has inconsistencies, your suggestions should help resolve those problems while staying true to the profiles.
 - Each recommendation must include a short explanation of **why** it fits, citing specific scenes or behaviors.
-- Write each suggestion in about 3 sentences.
+- Keep each suggestion concise—around 2–3 sentences—and justify clearly.
 
 Format your response like this:
 Interaction Recommendations:
