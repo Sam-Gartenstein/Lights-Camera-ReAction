@@ -51,6 +51,7 @@ Tasks:
 - Keep the plan grounded, character-driven, environment-aware, and sitcom-appropriate (2–3 minute scene).
 
 Format:
+
 Scene Plan:
 Character Goals:
 - [Goal 1]
@@ -64,6 +65,7 @@ Environment Detail:
 
 Creative Suggestion:
 - [Suggestion]
+
 """
 
         response = self.client.chat.completions.create(

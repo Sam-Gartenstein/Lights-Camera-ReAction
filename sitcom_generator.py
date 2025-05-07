@@ -192,7 +192,7 @@ def main():
     
     for i in range(num_scenes):
         scene_desc = extract_scene(outline, i+2)
-        print(f"\nDescription of {scene_desc}\n")
+        print(f"\nDescription of {scene_desc}")
         
         character_agent = CharacterAgent(
             client=client,
