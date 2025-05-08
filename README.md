@@ -1,4 +1,4 @@
-# 🎬 Lights, Camera, ReAction Functions
+# 🎬 Lights, Camera, ReAction
 
 This notebook builds a full **sitcom script generation pipeline** powered by **ReAct-based agents** — a powerful framework that combines **reasoning** (thinking through a problem) with **acting** (taking structured steps).
 
