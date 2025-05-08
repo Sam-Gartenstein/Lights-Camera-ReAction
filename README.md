@@ -24,13 +24,9 @@ By combining **structured agent workflows** and **retrieval-augmented memory**, 
 
 ## TODO:
 
-- Add in description of workflow
-- Perhaps add in an editor agent that edits the previous scene (We have multiple for planning)
-- **IMPORTANT** When creating editor, perhaps move `verify_character_consistency` to an Editor Agent
-- Continue to refine Character Agent so it explicitly refers to prior scenes!
-- Perhaps make function for adding metadata to vector database
-- Make sure the script doesn't have "Fade Out" 
-
+- Conintue to generate all 20 scenes
+- Implement an evaluation method (perhaps via LLMs)
+  
 ## Plan For Creating Baseline
 
 - Modify Generate Scene Prompt so it just takes in a description and recent scenes
