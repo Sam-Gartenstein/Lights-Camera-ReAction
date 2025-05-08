@@ -12,43 +12,45 @@ class ScenePlannerAgent:
         self.client = client
         self.internal_thoughts = []
 
-    def plan_next_scene_explicit(
+    def plan_next_scene(
         self,
         character_recommendations: str,
         comedic_recommendations: str,
-        environment_details_suggestions: str,
+        environment_recommendations: str,
         scene_number: int
     ) -> str:
         """
-        Creates a scene plan based on agent outputs, with explicit structure:
-        - 2 goals from CharacterAgent
-        - 1 goal from ComedicAgent
-        - 1 environment detail from EnvironmentAgent
-        - 1 creative suggestion
+        Synthesizes a concise next-scene plan based on the suggestions from all ReAct agents.
+
+        Rather than copying existing recommendations, the Executive Producer role is to rephrase and
+        distill feedback into 4 concrete, meaningful, and sitcom-appropriate objectives.
 
         Returns:
             - scene_plan (str)
         """
         prompt = f"""
-You are a sitcom scene planning assistant.
+You are the Executive Producer of a sitcom. Your agents have just provided feedback on Scene {scene_number}.
 
-You have just reviewed Scene {scene_number}.
+They offered targeted **recommendations** in three categories: character, comedy, and environment.
 
-Character Improvement Suggestions:
+Your job is to **synthesize** these inputs — don't just repeat them. Instead, extract the most relevant themes and rewrite them as clear, concise next-scene objectives.
+
+Character Recommendations:
 {character_recommendations}
 
-Comedic Improvement Suggestions:
+Comedic Recommendations:
 {comedic_recommendations}
 
-Environment Details Suggestions:
-{environment_details_suggestions}
+Environment Recommendations:
+{environment_recommendations}
 
 Tasks:
-- Select exactly **2** goals from the Character Improvement Suggestions.
-- Select exactly **1** goal from the Comedic Improvement Suggestions.
-- Select exactly **1** environment detail from the Environment Details Suggestions.
-- Propose exactly **1** creative suggestion for how the next scene could naturally progress, reinforcing these goals.
-- Keep the plan grounded, character-driven, environment-aware, and sitcom-appropriate (2–3 minute scene).
+- Write **2 Character Goals** based on the above character recommendations.
+- Write **1 Comedic Goal** inspired by the tone, running gags, or humor critiques above.
+- Write **1 Environment Detail** that builds on the suggestions without repeating them verbatim.
+- Propose **1 Creative Suggestion** for how the scene could naturally progress, integrating the above goals.
+
+Each should be specific, natural, and sitcom-appropriate for a 2–3 minute scene.
 
 Format:
 Scene Plan:
@@ -57,7 +59,7 @@ Character Goals:
 - [Goal 2]
 
 Comedic Goal:
-- [Goal 1]
+- [Goal]
 
 Environment Detail:
 - [Detail]
@@ -73,5 +75,5 @@ Creative Suggestion:
         )
 
         scene_plan = response.choices[0].message.content.strip()
-        self.internal_thoughts.append(f"Generated explicit structured scene plan for Scene {scene_number}.")
+        self.internal_thoughts.append(f"Generated synthesized scene plan for Scene {scene_number}.")
         return scene_plan
