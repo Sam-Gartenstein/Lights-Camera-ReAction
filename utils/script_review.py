@@ -1,5 +1,4 @@
 
-from datetime import timedelta
 
 def validate_episode_outline(client, sitcom_pitch, outline_text):
     prompt = f"""
@@ -25,7 +24,8 @@ Episode Outline:
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.5
+        temperature=0.5,
+        top_p=1,
     )
 
     return response.choices[0].message.content.strip()

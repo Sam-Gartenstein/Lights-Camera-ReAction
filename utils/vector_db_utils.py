@@ -44,8 +44,9 @@ Summary:
 <summary>
 
 Characters:
-- Name1
-- Name2
+- Character1
+- Character2
+*Note* THis is not capped at two
 
 Location:
 <location or "Unknown">
@@ -121,3 +122,53 @@ def add_scene_to_vector_db(scene_metadata, full_script=None, embedding_model=Non
         "emotional_tone": scene_metadata["emotional_tone"],
         "script": full_script
     })
+
+
+def store_scene_in_vector_db(
+    client,
+    sitcom_title,
+    scene_script,
+    embedding_model,
+    index,
+    vector_metadata
+):
+    """
+    Summarizes a sitcom scene and adds it to a vector database.
+
+    Args:
+        client: The language model client used for summarization.
+        sitcom_title (str): Title of the sitcom.
+        scene_script (str): Full scene script.
+        embedding_model: Embedding model used to encode the summary.
+        index: FAISS or other vector index for similarity search.
+        vector_metadata (list): List storing metadata for all stored scenes.
+
+    Returns:
+        None. Prints summary and updates the vector DB and metadata list.
+    """
+    # Summarize scene
+    scene_summary = summarize_scene(
+        client=client,
+        sitcom_title=sitcom_title,
+        scene_script=scene_script
+    )
+
+    # Add to vector database
+    add_scene_to_vector_db(
+        scene_summary,
+        full_script=scene_script,
+        embedding_model=embedding_model,
+        index=index,
+        vector_metadata=vector_metadata
+    )
+
+    # Print confirmation and metadata
+    print("Total scenes stored in vector DB:", index.ntotal, "\n")
+
+    for i, meta in enumerate(vector_metadata):
+        print(f"\nScene {i + 1}")
+        print("Summary:", meta["summary"])
+        print("Characters:", meta["characters"])
+        print("Location:", meta["location"])
+        print("Recurring Joke:", meta["recurring_joke"])
+        print("Emotional Tone:", meta["emotional_tone"])

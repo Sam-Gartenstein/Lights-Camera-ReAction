@@ -1,46 +1,51 @@
 
-def generate_sitcom_pitch(client, keywords=None):
+def generate_sitcom_pitch(client, keywords_dict=None):
     """
-    Generates an original sitcom pitch using optional user-provided keywords.
+    Generates an original sitcom pitch using optional user-provided keywords by category.
 
     Args:
         client: OpenAI client instance.
-        keywords (list of str, optional): Themes, settings, or elements to include in the pitch.
+        keywords_dict (dict of str -> list of str, optional): A dictionary of categorized keywords
+            (e.g., {'setting': [...], 'characters': [...], 'themes': [...], 'tone_genre': [...]}).
 
     Returns:
         str: A 1-paragraph sitcom pitch in the format:
-             Title: <sitcom title>
+             Title: "<sitcom title>"
              <description>
     """
     idea_string = ""
-    if keywords:
-        idea_string = "\n\nIncorporate the following themes, ideas, or settings if relevant:\n" + ", ".join(keywords)
+    if keywords_dict:
+        lines = ["\nIncorporate the following elements if relevant:"]
+        for category, keywords in keywords_dict.items():
+            if keywords:
+                lines.append(f"- **{category.capitalize()}**: {', '.join([k.strip() for k in keywords])}")
+        idea_string = "\n" + "\n".join(lines)
 
     prompt = f"""
-    You are a creative comedy screenwriter.
+You are a professional comedy screenwriter.
 
-    Generate an original sitcom concept in 1 paragraph.
-    Be specific about the premise, the main characters and their dynamics,
-    and the general tone of the show.{idea_string}
+Generate an original sitcom concept in 1 paragraph.
+Be specific about the premise, the main characters and their dynamics,
+and the general tone of the show.{idea_string}
 
-    The sitcom should be original and feel like it could exist on a major streaming platform.
-    Avoid copying existing shows directly.
+The sitcom should be original and feel like it could exist on a major streaming platform.
+Avoid copying existing shows directly.
 
-    Always follow this structure:
-    Title: <title of the sitcom>
-    Description <1-paragraph description>
-    """
+Always follow this exact structure:
+
+Title: "<title of the sitcom in quotation marks>"
+<1-paragraph description of the show>
+"""
 
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.85,
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0
+        temperature=0.7,
+        top_p=0.9,
     )
 
     return response.choices[0].message.content.strip()
+
 
 
 def generate_pilot_episode_outline(client, sitcom_pitch, num_scenes=20):
@@ -56,7 +61,7 @@ def generate_pilot_episode_outline(client, sitcom_pitch, num_scenes=20):
         str: A formatted pilot episode outline with scene titles and summaries.
     """
     prompt = f"""
-You are a professional sitcom writer.
+You are a professional sitcom writer, pitching a new sitcom to your network.
 
 Here is the pitch for a new sitcom:
 {sitcom_pitch}
@@ -80,7 +85,8 @@ Guidelines:
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.8
+        temperature=0.7,
+        top_p=0.9,
     )
 
     return response.choices[0].message.content.strip()

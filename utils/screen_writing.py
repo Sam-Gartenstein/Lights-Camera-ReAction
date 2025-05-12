@@ -1,76 +1,65 @@
 
-#from rag_utils import explain_rag_usage
-from datetime import timedelta
-import numpy as np
-
 
 def generate_scene_1_script(
     client,
     sitcom_title,
     scene_description,
-    scene_index=None,
-    rag_context=None,
-    line_target=(50, 70),
-    average_scene_minutes=2.5
+    scene_index,
+    rag_context=None
 ):
     """
-    Generates a sitcom scene script with logical laugh tracks, natural tone inferred from the description,
-    and optional timestamp headings.
+    Generates the first sitcom scene script with natural comedic rhythm and logical laugh track placement.
+    Includes a numbered heading for the scene using scene_index, but avoids timestamp formatting.
+
+    Args:
+        client: OpenAI client instance.
+        sitcom_title (str): Title of the sitcom.
+        scene_description (str): Short summary of the first scene.
+        scene_index (int): Index number of the scene (e.g., 0 for Scene 1).
+        rag_context (str, optional): Background information to include in the prompt for continuity or world-building.
+
+    Returns:
+        str: The generated sitcom scene script.
     """
-    # Timestamp calculation
-    if scene_index is not None:
-        start_time = timedelta(minutes=scene_index * average_scene_minutes)
-        end_time = timedelta(minutes=(scene_index + 1) * average_scene_minutes)
-        timestamp_text = f"# Scene {scene_index + 1} — [{str(start_time)[:-3]}–{str(end_time)[:-3]}]\n"
-    else:
-        timestamp_text = ""
-
-    # Context block if RAG is provided
     context_section = f"\nRelevant background information:\n{rag_context}" if rag_context else ""
-    min_lines, max_lines = line_target
+    scene_number = scene_index + 1
+    scene_header = f"# Scene {scene_number}\n"
 
-    # Prompt for LLM
     prompt = f"""
 You are a professional sitcom scriptwriter.
 
 Sitcom Title: {sitcom_title}
 Scene Description: {scene_description}{context_section}
 
-Write this scene as a formatted sitcom script.
+Write the opening scene of the pilot episode as a fully formatted sitcom script.
 
-Format:
-- Scene heading (e.g., INT. EARL'S LOCKSMITH SHOP – DAY)
+Formatting Guidelines:
+- Begin with a scene heading (e.g., INT. EARL'S LOCKSMITH SHOP – DAY)
 - Character names in ALL CAPS
-- Dialogue written with natural flow and comedic timing
+- Dialogue should reflect natural flow and comedic timing
 - Stage directions in parentheses
-- Include [LAUGH TRACK] only where it makes logical sense based on the rhythm and tone of the scene (e.g., punchlines, awkward silences, physical comedy). Use sparingly.
+- Use [LAUGH TRACK] sparingly and only where it fits (e.g., punchlines, awkward pauses, physical comedy)
+- Place [LAUGH TRACK] no more than 4 to 5 times
 
-Constraints:
-- Write approximately {min_lines} to {max_lines} total lines (including stage directions, dialogue, and laugh tracks)
-- Do not write more than one scene
-- Let the tone and pacing emerge naturally from the scene description and context
-- Focus on character dynamics and comedic flow
+Scene Constraints:
+- This should be the first scene in the episode
+- It should be self-contained and take place in a single location
+- The scene should introduce tone, key characters, or comedic premise
+- Aim for approximately 50 to 70 total lines (including dialogue, directions, and laugh tracks)
+- End the scene cleanly without cinematic transitions like 'Fade out' or location jumps
+- The tone and pacing should emerge naturally from the description and any provided context
 
-End the scene cleanly without cutting off mid-conversation.
+Only output the script.
 """
 
-    # Call the API
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
-        top_p=1,
+        top_p=0.9,
     )
 
-    # Post-processing (commented out for now)
-    # raw_script = response.choices[0].message.content.strip()
-    # lines = [line.strip() for line in raw_script.split("\n") if line.strip()]
-    # numbered_script = "\n".join([f"{i+1:>3}. {line}" for i, line in enumerate(lines)])
-
-    # return f"{timestamp_text}\n{numbered_script}"
-
-    # Return raw output
-    return f"{timestamp_text}\n{response.choices[0].message.content.strip()}"
+    return f"{scene_header}\n{response.choices[0].message.content.strip()}"
 
 
 def generate_scene(
@@ -92,27 +81,104 @@ def generate_scene(
     prompt = f"""
 You are a sitcom scene writer.
 
-Below is the Scene Plan for Scene {scene_number}:
+Definition:
+A sitcom scene is a self-contained 2–3 minute unit of story that:
+- Takes place in a single, consistent environment.
+- Involves 2–5 characters who advance emotional, comedic, or narrative goals.
+- Focuses on dialogue, quick pacing, and situation-based humor.
 
+Scene Plan for Scene {scene_number}:
 {scene_plan}
 
-Tasks:
-- Write a 2–3 minute sitcom scene based on this plan.
-- Make sure to hit the specified Character Goals and Comedic Goal.
-- Implement the Creative Suggestion naturally in the scene.
-- Keep the tone light, funny, and emotionally grounded.
-- Focus on dialogue and natural actions between characters.
-- Include character names clearly when they speak or act.
-- Keep the pacing quick — no more than 50–70 lines.
+STRICT INSTRUCTIONS:
+- Use ONLY the goals and suggestions from the scene plan.
+- DO NOT invent new characters, jokes, or settings not in the plan.
+- DO NOT use "Fade out", "Fade to black", or any cinematic transitions.
+- DO NOT end with a direction like [Scene fades out].
+- You MUST include 4–5 [Laugh Track] cues spaced throughout the scene.
+- Write 50–70 lines maximum with natural dialogue and actions.
+- Ensure the environment remains consistent and reflected in dialogue/props.
 
-Start writing the full scene now:
+Goal:
+Write a complete sitcom scene using only the provided goals and suggestions. End the scene with character-driven closure—NOT a cinematic fade.
+
+Now begin writing Scene {scene_number}:
 """
 
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
+        temperature=0.7,
+        top_p=0.9,
     )
 
-    new_scene_description = response.choices[0].message.content.strip()
-    return new_scene_description
+    return response.choices[0].message.content.strip()
+
+
+def generate_scene_baseline(
+    client,
+    sitcom_title,
+    scene_description,
+    previous_scenes=None
+):
+    """
+    Generates a sitcom scene script based on a description and optional prior scenes.
+
+    This is the baseline generation function for sitcom scenes. It produces a complete,
+    formatted script using a single prompt without the involvement of specialized agents
+    (e.g., comedy, character, or tone agents). The output can be used as a reference point
+    for evaluating the impact of multi-agent enhancements or prompt engineering strategies.
+
+    Args:
+        client: OpenAI client.
+        sitcom_title (str): Title of the sitcom.
+        scene_description (str): Short summary of the scene to generate.
+        previous_scenes (list of str, optional): Prior scene scripts for continuity.
+
+    Returns:
+        str: Generated sitcom scene as a formatted script.
+    """
+    # Prior context formatting
+    if previous_scenes:
+        combined_context = "\n\n".join(previous_scenes)
+        prior_script_note = f"\nHere are the scripts for the previous scenes:\n{combined_context}\n"
+    else:
+        prior_script_note = ""
+
+    prompt = f"""
+You are a professional sitcom scriptwriter.
+
+Sitcom Title: {sitcom_title}
+Scene Description: {scene_description}
+{prior_script_note}
+
+Write this scene as a fully formatted sitcom script.
+
+Formatting Rules:
+- Start with a scene heading (e.g., INT. EARL'S LOCKSMITH SHOP – DAY)
+- Character names in ALL CAPS
+- Dialogue with natural comedic rhythm
+- Stage directions in parentheses
+- Insert [LAUGH TRACK] only where it logically fits (e.g., punchlines, awkward moments, physical comedy)
+
+Constraints:
+- Write a single complete scene (no scene cuts or multiple locations)
+- Aim for approximately 50 to 70 lines total (dialogue, directions, and laugh tracks)
+- Maintain continuity with previous scenes (tone, character dynamics, plot)
+- The new scene should logically flow from the last scene provided, as if continuing the episode without abrupt jumps
+- Use [LAUGH TRACK] no more than 4 to 5 times in the entire scene, placed only where it makes logical comedic sense
+- End the scene cleanly — don’t cut off mid-conversation
+
+Only output the script.
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+        top_p=0.9,
+    )
+
+    return response.choices[0].message.content.strip()
+
+
