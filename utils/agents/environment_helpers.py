@@ -37,7 +37,8 @@ Key Details: [comma-separated list of props or features]
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0
+        temperature=0,
+        top_p=1
     )
 
     return response.choices[0].message.content.strip()
@@ -93,7 +94,8 @@ Transition Check:
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0
+        temperature=0,
+        top_p=1
     )
 
     output = response.choices[0].message.content.strip()
@@ -156,7 +158,8 @@ Environment Details Suggestions:
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
+        temperature=0.7,
+        top_p=0.9
     )
 
     return response.choices[0].message.content.strip()

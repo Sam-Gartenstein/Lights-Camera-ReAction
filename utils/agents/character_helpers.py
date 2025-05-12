@@ -59,7 +59,8 @@ Former Characters: [comma-separated list with scene numbers]
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0
+        temperature=0,
+        top_p=1
     )
 
     result = response.choices[0].message.content.strip()
@@ -87,7 +88,6 @@ Former Characters: [comma-separated list with scene numbers]
         "former_characters": former_characters,
         "scene_number": scene_number
     }
-
 
 
 def retrieve_character_history(
@@ -167,7 +167,8 @@ Format clearly and label each section.
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0
+        temperature=0,
+        top_p=1
     )
 
     return {
@@ -229,7 +230,8 @@ Respond exactly in this format:
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0
+        temperature=0,
+        top_p=1
     )
 
     result = response.choices[0].message.content.strip()
@@ -307,7 +309,8 @@ Interaction Recommendations:
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
+        temperature=0.7,
+        top_p=0.9
     )
 
     return response.choices[0].message.content.strip()

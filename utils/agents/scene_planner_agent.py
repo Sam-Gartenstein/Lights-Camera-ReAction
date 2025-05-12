@@ -71,7 +71,8 @@ Creative Suggestion:
         response = self.client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
+            temperature=0.7,
+            top_p=0.9
         )
 
         scene_plan = response.choices[0].message.content.strip()
