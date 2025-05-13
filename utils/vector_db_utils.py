@@ -19,6 +19,10 @@ def summarize_scene(client, sitcom_title, scene_script):
             - location (str or None)
             - recurring_joke (str or None)
             - emotional_tone (str)
+
+    Raises:
+        ValueError: If the API response is empty or incorrectly formatted.
+        Exception: For general runtime or API-related errors.
     """
     prompt = f"""
 You are the head writer of a sitcom called "{sitcom_title}".
@@ -46,7 +50,7 @@ Summary:
 Characters:
 - Character1
 - Character2
-*Note* THis is not capped at two
+*Note* This is not capped at two
 
 Location:
 <location or "Unknown">
@@ -61,38 +65,45 @@ Scene:
 {scene_script}
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.4,
-        top_p=1
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            top_p=1
+        )
 
-    output = response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
 
-    # Basic parsing (relies on expected format)
-    sections = output.split("\n\n")
-    parsed = {
-        "summary": "",
-        "characters": [],
-        "location": None,
-        "recurring_joke": None,
-        "emotional_tone": None
-    }
+        output = response.choices[0].message.content.strip()
 
-    for section in sections:
-        if section.startswith("Summary:"):
-            parsed["summary"] = section.replace("Summary:", "").strip()
-        elif section.startswith("Characters:"):
-            parsed["characters"] = [line.strip("- ").strip() for line in section.splitlines()[1:] if line.strip()]
-        elif section.startswith("Location:"):
-            parsed["location"] = section.replace("Location:", "").strip()
-        elif section.startswith("Recurring Joke:"):
-            parsed["recurring_joke"] = section.replace("Recurring Joke:", "").strip()
-        elif section.startswith("Emotional Tone:"):
-            parsed["emotional_tone"] = section.replace("Emotional Tone:", "").strip()
+        # Basic parsing
+        sections = output.split("\n\n")
+        parsed = {
+            "summary": "",
+            "characters": [],
+            "location": None,
+            "recurring_joke": None,
+            "emotional_tone": None
+        }
 
-    return parsed
+        for section in sections:
+            if section.startswith("Summary:"):
+                parsed["summary"] = section.replace("Summary:", "").strip()
+            elif section.startswith("Characters:"):
+                parsed["characters"] = [line.strip("- ").strip() for line in section.splitlines()[1:] if line.strip()]
+            elif section.startswith("Location:"):
+                parsed["location"] = section.replace("Location:", "").strip()
+            elif section.startswith("Recurring Joke:"):
+                parsed["recurring_joke"] = section.replace("Recurring Joke:", "").strip()
+            elif section.startswith("Emotional Tone:"):
+                parsed["emotional_tone"] = section.replace("Emotional Tone:", "").strip()
+
+        return parsed
+
+    except Exception as e:
+        raise Exception(f"Error summarizing scene: {str(e)}")
 
 
 def add_scene_to_vector_db(scene_metadata, full_script=None, embedding_model=None, index=None, vector_metadata=None):

@@ -20,22 +20,26 @@ def characters_extraction(
             - 'new_characters': list of newly introduced characters
             - 'former_characters': list of characters with prior scene numbers
             - 'scene_number': current scene number
+
+    Raises:
+        ValueError: If the API response is malformed or missing expected sections.
+        Exception: For any other API or runtime error.
     """
+    try:
+        # Filter to last `num_scenes` prior scenes
+        recent_scenes = prior_scene_metadata[-num_scenes:]
 
-    # Filter to last `num_scenes` prior scenes
-    recent_scenes = prior_scene_metadata[-num_scenes:]
+        # Map prior character appearances by scene number
+        character_scene_map = {}
+        for meta in recent_scenes:
+            for char in meta.get("characters", []):
+                character_scene_map.setdefault(char, []).append(meta.get("scene_number", "?"))
 
-    # Map prior character appearances by scene number
-    character_scene_map = {}
-    for meta in recent_scenes:
-        for char in meta.get("characters", []):
-            character_scene_map.setdefault(char, []).append(meta.get("scene_number", "?"))
+        prior_characters = set(character_scene_map.keys())
+        prior_characters_text = ", ".join(sorted(prior_characters)) if prior_characters else "None"
 
-    prior_characters = set(character_scene_map.keys())
-    prior_characters_text = ", ".join(sorted(prior_characters)) if prior_characters else "None"
-
-    # Build prompt
-    prompt = f"""
+        # Build prompt
+        prompt = f"""
 You are the Writers' Assistant on the sitcom writing team.
 
 Previously established characters: {prior_characters_text}
@@ -56,38 +60,44 @@ New Characters: [comma-separated list]
 Former Characters: [comma-separated list with scene numbers]
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        top_p=1
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            top_p=1
+        )
 
-    result = response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
 
-    # Parse output
-    current_scene_characters = []
-    new_characters = []
-    former_characters = []
+        result = response.choices[0].message.content.strip()
 
-    for line in result.split("\n"):
-        if line.strip().startswith("Characters:"):
-            chars_text = line.split(":", 1)[1].strip().strip("[]")
-            current_scene_characters = [char.strip() for char in chars_text.split(",") if char.strip()]
-        elif line.strip().startswith("New Characters:"):
-            new_chars_text = line.split(":", 1)[1].strip().strip("[]")
-            new_characters = [char.strip() for char in new_chars_text.split(",") if char.strip()]
-        elif line.strip().startswith("Former Characters:"):
-            former_chars_text = line.split(":", 1)[1].strip().strip("[]")
-            former_characters = [char.strip() for char in former_chars_text.split(",") if char.strip()]
+        # Parse output
+        current_scene_characters = []
+        new_characters = []
+        former_characters = []
 
-    return {
-        "prior_characters": sorted(list(prior_characters)),
-        "current_scene_characters": current_scene_characters,
-        "new_characters": new_characters,
-        "former_characters": former_characters,
-        "scene_number": scene_number
-    }
+        for line in result.split("\n"):
+            if line.strip().startswith("Characters:"):
+                chars_text = line.split(":", 1)[1].strip().strip("[]")
+                current_scene_characters = [char.strip() for char in chars_text.split(",") if char.strip()]
+            elif line.strip().startswith("New Characters:"):
+                new_chars_text = line.split(":", 1)[1].strip().strip("[]")
+                new_characters = [char.strip() for char in new_chars_text.split(",") if char.strip()]
+            elif line.strip().startswith("Former Characters:"):
+                former_chars_text = line.split(":", 1)[1].strip().strip("[]")
+                former_characters = [char.strip() for char in former_chars_text.split(",") if char.strip()]
+
+        return {
+            "prior_characters": sorted(list(prior_characters)),
+            "current_scene_characters": current_scene_characters,
+            "new_characters": new_characters,
+            "former_characters": former_characters,
+            "scene_number": scene_number
+        }
+
+    except Exception as e:
+        raise Exception(f"Error extracting characters for Scene {scene_number}: {str(e)}")
 
 
 def retrieve_character_history(
@@ -112,21 +122,25 @@ def retrieve_character_history(
             - 'character': character name
             - 'profile': full character profile generated from scenes
             - 'source_summaries': list of scene summaries used as input
+
+    Raises:
+        ValueError: If the API response is empty or improperly formatted.
+        Exception: For general runtime or API-related issues.
     """
+    try:
+        # Filter scenes where character appears
+        relevant_scenes = [meta for meta in vector_metadata if character in meta.get("characters", [])]
+        recent_relevant_scenes = relevant_scenes[-num_scenes:]
+        relevant_summaries = [scene.get("summary", "") for scene in recent_relevant_scenes]
 
-    # Filter scenes where character appears
-    relevant_scenes = [meta for meta in vector_metadata if character in meta.get("characters", [])]
-    recent_relevant_scenes = relevant_scenes[-num_scenes:]
-    relevant_summaries = [scene.get("summary", "") for scene in recent_relevant_scenes]
+        if relevant_summaries:
+            # Annotate each summary with scene number
+            labeled_summaries = "\n\n".join([
+                f"Scene {scene.get('scene_number', '?')}:\n{scene.get('summary', '').strip()}"
+                for scene in recent_relevant_scenes
+            ])
 
-    if relevant_summaries:
-        # Annotate each summary with scene number for better tracing
-        labeled_summaries = "\n\n".join([
-            f"Scene {scene.get('scene_number', '?')}:\n{scene.get('summary', '').strip()}"
-            for scene in recent_relevant_scenes
-        ])
-
-        prompt = f"""
+            prompt = f"""
 You are the Script Supervisor on the sitcom writing team.
 
 Based on the following prior scenes, build a detailed and **explicitly grounded** character profile for: {character}
@@ -145,8 +159,8 @@ Do not invent any traits or backstories not present in the text.
 Your output should show clear reasoning based on specific scene descriptions or numbers.
 Format clearly.
 """
-    else:
-        prompt = f"""
+        else:
+            prompt = f"""
 You are the Script Supervisor on the sitcom writing team.
 
 There are no previous scenes involving the character {character}.
@@ -164,18 +178,24 @@ If there is not enough evidence for any part, say so directly.
 Format clearly and label each section.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        top_p=1
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            top_p=1
+        )
 
-    return {
-        "character": character,
-        "profile": response.choices[0].message.content.strip(),
-        "source_summaries": relevant_summaries
-    }
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError(f"Received an empty or malformed response for character {character}.")
+
+        return {
+            "character": character,
+            "profile": response.choices[0].message.content.strip(),
+            "source_summaries": relevant_summaries
+        }
+
+    except Exception as e:
+        raise Exception(f"Error retrieving history for character '{character}': {str(e)}")
 
 
 def verify_character_consistency(
@@ -200,14 +220,18 @@ def verify_character_consistency(
         Tuple of:
             - Boolean indicating whether the scene is consistent (True) or not (False)
             - Model-generated explanation justifying the decision
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For general API or runtime issues.
     """
+    try:
+        profiles_text = "\n\n".join([
+            f"Character: {char}\n{profile_data['profile']}"
+            for char, profile_data in character_profiles.items()
+        ])
 
-    profiles_text = "\n\n".join([
-        f"Character: {char}\n{profile_data['profile']}"
-        for char, profile_data in character_profiles.items()
-    ])
-
-    prompt = f"""
+        prompt = f"""
 You are the Head Writer on the sitcom writing team.
 
 Character Profiles (from the last {num_scenes} scene{'s' if num_scenes > 1 else ''}):
@@ -227,26 +251,32 @@ Respond exactly in this format:
 2. Short Explanation Why (max 5 lines)
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        top_p=1
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            top_p=1
+        )
 
-    result = response.choices[0].message.content.strip()
-    is_consistent = "yes" in result.lower().split("\n")[0].lower()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
 
-    return is_consistent, result
+        result = response.choices[0].message.content.strip()
+        is_consistent = "yes" in result.lower().split("\n")[0].lower()
+
+        return is_consistent, result
+
+    except Exception as e:
+        raise Exception(f"Error verifying character consistency: {str(e)}")
 
 
 def recommend_character_interactions(
     client,
-    character_profiles: Dict[str, Dict],
-    scene_description: str,
-    num_scenes: int = 1,
-    is_consistent: bool = True,
-    consistency_result: str = ""
+    character_profiles,
+    scene_description,
+    num_scenes=1,
+    is_consistent=True,
+    consistency_result=""
 ) -> str:
     """
     Recommends two grounded, meaningful character interactions for the given scene,
@@ -262,24 +292,27 @@ def recommend_character_interactions(
         consistency_result: The LLM’s consistency explanation/suggestions, if inconsistent.
 
     Returns:
-        A formatted string containing two recommended character interactions,
-        each with a justification based on prior context and scene summaries.
+        str: Formatted string with two recommended character interactions.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For general runtime or API-related errors.
     """
+    try:
+        profiles_text = "\n\n".join([
+            f"Character: {char}\n{profile_data['profile']}"
+            for char, profile_data in character_profiles.items()
+        ])
 
-    profiles_text = "\n\n".join([
-        f"Character: {char}\n{profile_data['profile']}"
-        for char, profile_data in character_profiles.items()
-    ])
+        # Add consistency context if applicable
+        consistency_context = (
+            f"\n\nNote: The current scene was flagged as inconsistent.\n"
+            f"Here is the critique provided:\n{consistency_result.strip()}\n\n"
+            f"Use this to help adjust or refine the interactions to improve character alignment."
+            if not is_consistent else ""
+        )
 
-    # Add consistency context if relevant
-    consistency_context = (
-        f"\n\nNote: The current scene was flagged as inconsistent.\n"
-        f"Here is the critique provided:\n{consistency_result.strip()}\n\n"
-        f"Use this to help adjust or refine the interactions to improve character alignment."
-        if not is_consistent else ""
-    )
-
-    prompt = f"""
+        prompt = f"""
 You are the Co-Executive Producer on the sitcom writing team.
 
 You will suggest **exactly two meaningful character interactions** for the following scene.
@@ -306,11 +339,17 @@ Interaction Recommendations:
 2. [Suggestion] — (justification referencing prior scene(s))
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9
+        )
 
-    return response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise Exception(f"Error generating character interaction recommendations: {str(e)}")

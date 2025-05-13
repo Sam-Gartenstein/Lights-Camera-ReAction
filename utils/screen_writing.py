@@ -20,6 +20,10 @@ def generate_scene_1_script(
 
     Returns:
         str: The generated sitcom scene script.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For any other runtime or API-related errors.
     """
     context_section = f"\nRelevant background information:\n{rag_context}" if rag_context else ""
     scene_number = scene_index + 1
@@ -52,14 +56,21 @@ Scene Constraints:
 Only output the script.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9,
+        )
 
-    return f"{scene_header}\n{response.choices[0].message.content.strip()}"
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
+
+        return f"{scene_header}\n{response.choices[0].message.content.strip()}"
+
+    except Exception as e:
+        raise Exception(f"Error generating Scene {scene_number} script: {str(e)}")
 
 
 def generate_scene(
@@ -76,7 +87,11 @@ def generate_scene(
         scene_number: The number for the next scene (e.g., 6 if last scene was 5).
 
     Returns:
-        - new_scene_description (str)
+        str: The generated sitcom scene script.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For any runtime or API-related errors.
     """
     prompt = f"""
 You are a sitcom scene writer.
@@ -105,14 +120,21 @@ Write a complete sitcom scene using only the provided goals and suggestions. End
 Now begin writing Scene {scene_number}:
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9,
+        )
 
-    return response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise Exception(f"Error generating Scene {scene_number} script: {str(e)}")
 
 
 def generate_scene_baseline(
@@ -137,8 +159,11 @@ def generate_scene_baseline(
 
     Returns:
         str: Generated sitcom scene as a formatted script.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For any runtime or API-related errors.
     """
-    # Prior context formatting
     if previous_scenes:
         combined_context = "\n\n".join(previous_scenes)
         prior_script_note = f"\nHere are the scripts for the previous scenes:\n{combined_context}\n"
@@ -172,13 +197,18 @@ Constraints:
 Only output the script.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9,
+        )
 
-    return response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
 
+        return response.choices[0].message.content.strip()
 
+    except Exception as e:
+        raise Exception(f"Error generating baseline scene script: {str(e)}")

@@ -3,9 +3,9 @@ from typing import Dict, List, Tuple
 
 def analyze_and_verify_comedic_consistency(
     client,
-    prior_scene_metadata: List[Dict],
-    scene_description: str,
-    max_scenes: int = 3
+    prior_scene_metadata,
+    scene_description,
+    max_scenes=3
 ) -> Tuple[bool, str]:
     """
     Analyze comedic tone, verify consistency with prior scenes, and check for overused jokes,
@@ -21,17 +21,22 @@ def analyze_and_verify_comedic_consistency(
         Tuple[bool, str]:
             - is_consistent (bool): Whether the new scene aligns with prior comedic tone and jokes.
             - full_analysis_text (str): Structured explanation of tone, consistency, and joke usage.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For general runtime or API-related issues.
     """
-    # Pull prior summaries and recurring jokes
-    relevant_summaries = [meta["summary"] for meta in prior_scene_metadata][-max_scenes:]
-    prior_running_gags = []
-    for meta in prior_scene_metadata[-max_scenes:]:
-        prior_running_gags.extend(meta.get("recurring_joke", []))
+    try:
+        # Pull prior summaries and recurring jokes
+        relevant_summaries = [meta["summary"] for meta in prior_scene_metadata][-max_scenes:]
+        prior_running_gags = []
+        for meta in prior_scene_metadata[-max_scenes:]:
+            prior_running_gags.extend(meta.get("recurring_joke", []))
 
-    prior_summary_text = "\n".join(relevant_summaries)
-    prior_gags_text = ", ".join(prior_running_gags) if prior_running_gags else "None"
+        prior_summary_text = "\n".join(relevant_summaries)
+        prior_gags_text = ", ".join(prior_running_gags) if prior_running_gags else "None"
 
-    prompt = f"""
+        prompt = f"""
 You are a professional comedy writer who specializes in punch-up work for sitcoms.
 
 Your job is to ensure that the comedic tone remains consistent across scenes and that recurring jokes are used effectively without becoming stale.
@@ -59,24 +64,30 @@ Respond exactly in this format:
 5. Specific Suggestions if inconsistencies or overuse exist
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        top_p=1
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            top_p=1
+        )
 
-    result = response.choices[0].message.content.strip()
-    is_consistent = "yes" in result.lower().split("\n")[1].lower()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
 
-    return is_consistent, result
+        result = response.choices[0].message.content.strip()
+        is_consistent = "yes" in result.lower().split("\n")[1].lower()
+
+        return is_consistent, result
+
+    except Exception as e:
+        raise Exception(f"Error analyzing comedic consistency: {str(e)}")
 
 
 def recommend_comedic_improvements(
     client,
-    scene_description: str,
-    is_consistent: bool = True,
-    consistency_result: str = ""
+    scene_description,
+    is_consistent=True,
+    consistency_result=""
 ) -> str:
     """
     Suggests two ways to enhance humor naturally for a given scene.
@@ -90,17 +101,21 @@ def recommend_comedic_improvements(
 
     Returns:
         str: Recommended comedic improvements formatted as two brief suggestions.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For general runtime or API-related errors.
     """
+    try:
+        # Include critique context if the scene was flagged as inconsistent
+        consistency_context = (
+            f"\n\nNote: The comedic tone in this scene was flagged as inconsistent.\n"
+            f"Critique:\n{consistency_result.strip()}\n\n"
+            f"Your task is to revise the humor to better align with the prior scenes' tone, while preserving the scene’s intent."
+            if not is_consistent else ""
+        )
 
-    # Include critique context if the scene was flagged as inconsistent
-    consistency_context = (
-        f"\n\nNote: The comedic tone in this scene was flagged as inconsistent.\n"
-        f"Critique:\n{consistency_result.strip()}\n\n"
-        f"Your task is to revise the humor to better align with the prior scenes' tone, while preserving the scene’s intent."
-        if not is_consistent else ""
-    )
-
-    prompt = f"""
+        prompt = f"""
 You are the Co-Executive Producer in charge of comedic punch-up for a sitcom writing team.
 
 Your job is to improve scenes by adding natural, grounded humor that fits the characters and tone of the show.
@@ -122,11 +137,17 @@ Interaction Recommendations:
 2. [Suggestion] — (justification referencing prior scene(s))
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9
+        )
 
-    return response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise Exception(f"Error generating comedic improvement suggestions: {str(e)}")

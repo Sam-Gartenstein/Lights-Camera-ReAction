@@ -12,6 +12,10 @@ def generate_sitcom_pitch(client, keywords_dict=None):
         str: A 1-paragraph sitcom pitch in the format:
              Title: "<sitcom title>"
              <description>
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For any other runtime or API-related errors.
     """
     idea_string = ""
     if keywords_dict:
@@ -37,15 +41,22 @@ Title: "<title of the sitcom in quotation marks>"
 <1-paragraph description of the show>
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9,
+        )
 
-    return response.choices[0].message.content.strip()
+        # Validate response structure
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
 
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise Exception(f"Error generating sitcom pitch: {str(e)}")
 
 
 def generate_pilot_episode_outline(client, sitcom_pitch, num_scenes=20):
@@ -59,6 +70,10 @@ def generate_pilot_episode_outline(client, sitcom_pitch, num_scenes=20):
 
     Returns:
         str: A formatted pilot episode outline with scene titles and summaries.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For any other runtime or API-related errors.
     """
     prompt = f"""
 You are a professional sitcom writer, pitching a new sitcom to your network.
@@ -82,11 +97,19 @@ Guidelines:
 - Return only the full pilot episode outline, formatted clearly and consistently as shown.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9,
+        )
 
-    return response.choices[0].message.content.strip()
+        # Check that response is well-formed
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise Exception(f"Error generating pilot episode outline: {str(e)}")

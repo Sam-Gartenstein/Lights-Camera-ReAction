@@ -26,7 +26,11 @@ class ScenePlannerAgent:
         distill feedback into 4 concrete, meaningful, and sitcom-appropriate objectives.
 
         Returns:
-            - scene_plan (str)
+            str: A scene plan in structured bullet-point format.
+
+        Raises:
+            ValueError: If the API response is empty or malformed.
+            Exception: For general API-related errors.
         """
         prompt = f"""
 You are the Executive Producer of a sitcom. Your agents have just provided feedback on Scene {scene_number}.
@@ -68,13 +72,22 @@ Creative Suggestion:
 - [Suggestion]
 """
 
-        response = self.client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            top_p=0.9
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                top_p=0.9
+            )
 
-        scene_plan = response.choices[0].message.content.strip()
-        self.internal_thoughts.append(f"Generated synthesized scene plan for Scene {scene_number}.")
-        return scene_plan
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed scene plan response.")
+
+            scene_plan = response.choices[0].message.content.strip()
+            self.internal_thoughts.append(f"✅ Scene {scene_number} plan generated successfully.")
+            return scene_plan
+
+        except Exception as e:
+            error_msg = f"❌ Failed to generate scene plan for Scene {scene_number}: {str(e)}"
+            self.internal_thoughts.append(error_msg)
+            raise Exception(error_msg)

@@ -3,8 +3,8 @@ from typing import List, Tuple
 
 def analyze_environment(
     client,
-    scene_description: str,
-    scene_number: int
+    scene_description,
+    scene_number
 ) -> str:
     """
     Analyze the environment and key scenery features from the scene description.
@@ -16,8 +16,13 @@ def analyze_environment(
 
     Returns:
         str: Structured environment analysis including location and key visual/prop elements.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For general runtime or API-related errors.
     """
-    prompt = f"""
+    try:
+        prompt = f"""
 You are the Writers' Assistant on the sitcom writing team.
 
 Your job is to extract key environmental elements from Scene {scene_number}.
@@ -34,21 +39,27 @@ Environment: [concise location name]
 Key Details: [comma-separated list of props or features]
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        top_p=1
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            top_p=1
+        )
 
-    return response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError(f"Received an empty or malformed environment response for Scene {scene_number}.")
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise Exception(f"Error analyzing environment for Scene {scene_number}: {str(e)}")
 
 
 def verify_environment_transition(
     client,
-    prior_environments: List[str],
-    current_environment: str,
-    num_scenes: int
+    prior_environments,
+    current_environment,
+    num_scenes
 ) -> Tuple[bool, str, str]:
     """
     Verifies whether the transition to the current scene's environment is logical and natural,
@@ -65,10 +76,15 @@ def verify_environment_transition(
             - is_consistent (bool): Whether the transition is logical.
             - explanation (str): Brief rationale or suggestion.
             - formatted_output (str): Full text response from the LLM.
-    """
-    prior_env_text = ", ".join(prior_environments[-num_scenes:]) if prior_environments else "None"
 
-    prompt = f"""
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For general API or runtime errors.
+    """
+    try:
+        prior_env_text = ", ".join(prior_environments[-num_scenes:]) if prior_environments else "None"
+
+        prompt = f"""
 You are the Head Writer on the sitcom writing team.
 
 Your task is to evaluate whether the environment change into the current scene makes sense.
@@ -91,47 +107,67 @@ Transition Check:
 - Suggested Transition Setup (optional)
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        top_p=1
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            top_p=1
+        )
 
-    output = response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
 
-    # Parse consistency verdict
-    verdict_line = next((line for line in output.splitlines() if "Logical Transition?" in line), "").lower()
-    is_consistent = "yes" in verdict_line
+        output = response.choices[0].message.content.strip()
 
-    # Extract explanation
-    explanation_start = output.find("Short Explanation:")
-    if explanation_start != -1:
-        explanation = output[explanation_start:].strip()
-    else:
-        explanation = "Explanation not found."
+        # Parse consistency verdict
+        verdict_line = next((line for line in output.splitlines() if "Logical Transition?" in line), "").lower()
+        is_consistent = "yes" in verdict_line
 
-    return is_consistent, explanation, output
+        # Extract explanation
+        explanation_start = output.find("Short Explanation:")
+        if explanation_start != -1:
+            explanation = output[explanation_start:].strip()
+        else:
+            explanation = "Explanation not found."
+
+        return is_consistent, explanation, output
+
+    except Exception as e:
+        raise Exception(f"Error verifying environment transition: {str(e)}")
 
 
 def suggest_environment_details(
     client,
-    environment_analysis: str,
-    transition_check: str,
-    is_consistent: bool
+    environment_analysis,
+    transition_check,
+    is_consistent
 ) -> str:
     """
     Suggest small environment and setting details to naturally enhance the next scene.
 
     Focus on sensory details, props, small setting beats, and smooth transition setups.
-    """
-    consistency_note = (
-        "The transition is smooth, so these details should support continuity and tone."
-        if is_consistent else
-        "The transition is jarring, so use details that subtly reinforce the new setting and ease the audience into it."
-    )
 
-    prompt = f"""
+    Args:
+        client: OpenAI client instance.
+        environment_analysis (str): Analysis of the current scene's environment.
+        transition_check (str): Evaluation of whether the environment transition makes sense.
+        is_consistent (bool): Whether the transition was deemed logical.
+
+    Returns:
+        str: Two recommended sensory/environmental enhancements.
+
+    Raises:
+        ValueError: If the API response is malformed or empty.
+        Exception: For general API or runtime errors.
+    """
+    try:
+        consistency_note = (
+            "The transition is smooth, so these details should support continuity and tone."
+            if is_consistent else
+            "The transition is jarring, so use details that subtly reinforce the new setting and ease the audience into it."
+        )
+
+        prompt = f"""
 You are the Co-Executive Producer on the sitcom writing team.
 
 Environment Analysis:
@@ -155,11 +191,17 @@ Environment Details Suggestions:
 - [Suggestion 2]
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        top_p=0.9
-    )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9
+        )
 
-    return response.choices[0].message.content.strip()
+        if not response or not response.choices or not response.choices[0].message.content:
+            raise ValueError("Received an empty or malformed response from the API.")
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise Exception(f"Error generating environment detail suggestions: {str(e)}")
