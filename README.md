@@ -1,4 +1,4 @@
-# 🎬 Lights, Camera, ReAction Functions
+# Lights, Camera, ReAction Functions
 
 This notebook builds a full **sitcom script generation pipeline** powered by **ReAct-based agents** — a powerful framework that combines **reasoning** (thinking through a problem) with **acting** (taking structured steps).
 
@@ -8,7 +8,7 @@ After that, each new scene is **scripted, reviewed, and improved** using special
 
 ---
 
-✅ **Benefits of using ReAct agents**:
+**Benefits of using ReAct agents**:
 
 - **More structured and transparent thinking:** Agents reason step-by-step before making edits.
 - **Dynamic adaptation:** Agents flexibly plan the next creative moves based on scene history.
