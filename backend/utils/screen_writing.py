@@ -67,7 +67,7 @@ Only output the script.
         if not response or not response.choices or not response.choices[0].message.content:
             raise ValueError("Received an empty or malformed response from the API.")
 
-        return f"{scene_header}\n{response.choices[0].message.content.strip()}"
+        return f"{response.choices[0].message.content.strip()}"
 
     except Exception as e:
         raise Exception(f"Error generating Scene {scene_number} script: {str(e)}")

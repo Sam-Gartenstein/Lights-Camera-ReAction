@@ -132,9 +132,8 @@ Tasks:
 - Keep suggestions short, sitcom-appropriate (2–3 min scene).
 
 Format:
-Interaction Recommendations:
-1. [Suggestion] — (justification referencing prior scene(s))
-2. [Suggestion] — (justification referencing prior scene(s))
+1. — (justification referencing prior scene(s))
+2. — (justification referencing prior scene(s))
 """
 
         response = client.chat.completions.create(

@@ -334,9 +334,8 @@ Instructions:
 - Keep each suggestion concise—around 2–3 sentences—and justify clearly.
 
 Format your response like this:
-Interaction Recommendations:
-1. [Suggestion] — (justification referencing prior scene(s))
-2. [Suggestion] — (justification referencing prior scene(s))
+1. — (justification referencing prior scene(s))
+2. — (justification referencing prior scene(s))
 """
 
         response = client.chat.completions.create(

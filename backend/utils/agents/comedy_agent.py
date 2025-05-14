@@ -1,6 +1,6 @@
 
 from typing import Dict, List, Tuple
-from comedy_helpers import (
+from .comedy_helpers import (
     analyze_and_verify_comedic_consistency,
     recommend_comedic_improvements
 )

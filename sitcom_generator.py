@@ -283,7 +283,7 @@ def main():
         scene_script = generate_scene(
             client=client,
             scene_plan=scene_plan,
-            scene_number= 2
+            scene_number=i+2
         )
 
         print(scene_script)

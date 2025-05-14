@@ -1,6 +1,6 @@
 
 from typing import List, Tuple, Dict
-from environment_helpers import (
+from .environment_helpers import (
     analyze_environment,
     verify_environment_transition,
     suggest_environment_details
@@ -63,6 +63,8 @@ class EnvironmentAgent:
         Observe step: Evaluate if the environment transition is logical and natural.
         """
         prior_environments = [meta.get("location", "Unknown") for meta in self.vector_metadata]
+        print("prior_environments:", prior_environments)
+        print("current_environment:", current_environment)
 
         is_consistent, explanation, formatted_output = verify_environment_transition(
             client=self.client,

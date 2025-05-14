@@ -186,7 +186,6 @@ Tasks:
 - Keep suggestions light, natural, and funny where appropriate.
 
 Format:
-Environment Details Suggestions:
 - [Suggestion 1]
 - [Suggestion 2]
 """

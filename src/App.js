@@ -16,6 +16,7 @@ import {
 import LinearProgress from '@mui/material/LinearProgress';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import jsPDF from 'jspdf';
 
 const API_BASE_URL = 'http://127.0.0.1:5000/api';
 
@@ -52,15 +53,14 @@ function formatOutline(outline) {
   if (!outline) return '';
   // Split into lines
   const lines = outline.split('\n').filter(line => line.trim() !== '');
+
+  // Find the index of the first line that starts with 'Scene'
+  const firstSceneIdx = lines.findIndex(line => line.startsWith('Scene'));
+  if (firstSceneIdx === -1) return ''; // No scene found
+
   const elements = [];
-  lines.forEach((line, idx) => {
-    if (line.startsWith('Episode Concept:')) {
-      elements.push(
-        <Typography key={`epconcept-${idx}`} sx={{ mb: 2 }}>
-          <b>Episode Concept:</b> {line.replace('Episode Concept:', '').trim()}
-        </Typography>
-      );
-    } else if (line.match(/^Scene \d+:/)) {
+  lines.slice(firstSceneIdx).forEach((line, idx) => {
+    if (line.match(/^Scene \d+:/)) {
       // Split scene number/title from description
       const match = line.match(/^(Scene \d+:\s*"[^"]+"\s*)(.*)/);
       if (match) {
@@ -92,7 +92,7 @@ function formatOutline(outline) {
 
 // Helper functions for formatting agent outputs
 function splitRecommendations(text) {
-  if (!text) return [];
+  if (!text || typeof text !== 'string') return [];
   // Try to split on '- [Suggestion' or '- Suggestion' or numbered list
   let items = text.split(/- \[Suggestion.*?\]:?|\d+\. /g).filter(Boolean);
   if (items.length > 1) return items.map(i => i.trim());
@@ -104,13 +104,22 @@ function splitRecommendations(text) {
 }
 
 function splitByDash(text) {
-  if (!text) return [];
+  if (!text || typeof text !== 'string') return [];
   return text.split(/- /g).filter(Boolean).map(i => i.trim());
 }
 
 function splitNumbered(text) {
-  if (!text) return [];
+  if (!text || typeof text !== 'string') return [];
   return text.split(/\d+\. /g).filter(Boolean).map(i => i.trim());
+}
+
+// Helper to chunk an array into groups of a given size
+function chunkArray(array, size) {
+  const result = [];
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
 }
 
 function App() {
@@ -122,7 +131,7 @@ function App() {
     themes: '',
     tone_genre: ''
   });
-  const [sitcomConcept, setSitcomConcept] = useState('');
+  const [concept, setConcept] = useState('');
   const [outline, setOutline] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -131,18 +140,64 @@ function App() {
   const [validationResult, setValidationResult] = useState('');
   const [validationLoading, setValidationLoading] = useState(false);
   const [sceneFlow, setSceneFlow] = useState(false);
-  const [scene1Script, setScene1Script] = useState('');
   const [showOutlineModal, setShowOutlineModal] = useState(false);
   const [showConceptModal, setShowConceptModal] = useState(false);
   const [scene1VectorInfo, setScene1VectorInfo] = useState(null);
   const [scene1VectorLoading, setScene1VectorLoading] = useState(false);
-  const [showWritersRoom, setShowWritersRoom] = useState(false);
+  const [showWritersRoom, setShowWritersRoom] = useState({});
   const [writersRoomLoading, setWritersRoomLoading] = useState(false);
-  const [writersRoomResults, setWritersRoomResults] = useState(null);
+  const [writersRoomResultsByScene, setWritersRoomResultsByScene] = useState({});
+  const [scene2VectorInfo, setScene2VectorInfo] = useState(null);
+  const [scene2VectorLoading, setScene2VectorLoading] = useState(false);
+  const [showWritersRoom2, setShowWritersRoom2] = useState(false);
+  const [writersRoomLoading2, setWritersRoomLoading2] = useState(false);
+  const [writersRoomResults2, setWritersRoomResults2] = useState(null);
+  const [showVectorInfo, setShowVectorInfo] = useState(false);
+  const [vectorLoading, setVectorLoading] = useState(false);
+  const [vectorInfo, setVectorInfo] = useState(null);
+  
+  // Store all scenes in a single object
+  const [scenes, setScenes] = useState({});
+  const [vectorInfoByScene, setVectorInfoByScene] = useState({});
+  
+  // Original steps for concept generation
+  const conceptSteps = [
+    'API Key',
+    'Keywords',
+    'Concept',
+    'Outline'
+  ];
+
+  // Scene steps for script generation
+  const sceneSteps = [
+    'Scene 1',
+    'Scene 2',
+    'Scene 3',
+    'Scene 4',
+    'Scene 5',
+    'Scene 6',
+    'Scene 7',
+    'Scene 8',
+    'Scene 9',
+    'Scene 10',
+    'Scene 11',
+    'Scene 12',
+    'Scene 13',
+    'Scene 14',
+    'Scene 15',
+    'Scene 16',
+    'Scene 17',
+    'Scene 18',
+    'Scene 19',
+    'Scene 20'
+  ];
+
+  // Track which flow we're in
+  const [currentFlow, setCurrentFlow] = useState('concept'); // 'concept' or 'scenes'
 
   // Generate sitcom concept when landing on the sitcom concept step
   useEffect(() => {
-    if (!sceneFlow && activeStep === 4 && !sitcomConcept) {
+    if (!sceneFlow && activeStep === 4 && !concept) {
       generateConcept();
     }
     // eslint-disable-next-line
@@ -158,7 +213,7 @@ function App() {
 
   // Generate Scene 1 script when entering scene flow
   useEffect(() => {
-    if (sceneFlow && activeStep === 0 && !scene1Script) {
+    if (sceneFlow && activeStep === 0 && !scenes[1]) {
       generateScene1();
     }
     // eslint-disable-next-line
@@ -175,7 +230,7 @@ function App() {
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error);
-      setSitcomConcept(data.concept);
+      setConcept(data.concept);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -190,7 +245,7 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/generate-outline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, concept: sitcomConcept })
+        body: JSON.stringify({ apiKey, concept })
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error);
@@ -213,8 +268,49 @@ function App() {
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error);
-      setScene1Script(data.scene1);
+      setScenes(prev => ({ ...prev, 1: data.scene1 }));
     } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateNextScene = async (sceneNumber) => {
+    setLoading(true);
+    setError('');
+    try {
+      console.log('Sending request with data:', {
+        apiKey,
+        outline,
+        previousScene: scenes[sceneNumber - 1],
+        writersRoomResults: writersRoomResultsByScene[sceneNumber - 1]
+      });
+
+      const response = await fetch(`${API_BASE_URL}/generate-scene/${sceneNumber}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey,
+          outline,
+          previousScene: scenes[sceneNumber - 1],
+          writersRoomResults: writersRoomResultsByScene[sceneNumber - 1]
+        })
+      });
+
+      const data = await response.json();
+      console.log('Received response:', data);
+
+      if (data.error) throw new Error(data.error);
+      
+      if (!data[`scene${sceneNumber}`]) {
+        throw new Error('No scene data received from server');
+      }
+
+      setScenes(prev => ({ ...prev, [sceneNumber]: data[`scene${sceneNumber}`] }));
+      setActiveStep(sceneNumber - 1); // Adjust activeStep to match scene number
+    } catch (err) {
+      console.error('Error generating scene:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -224,18 +320,19 @@ function App() {
   const validateOutline = async () => {
     setValidationLoading(true);
     setValidationResult('');
-    setValidationOpen(true);
     try {
       const response = await fetch(`${API_BASE_URL}/validate-outline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, concept: sitcomConcept, outline })
+        body: JSON.stringify({ apiKey, concept, outline })
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       setValidationResult(data.validation);
+      setValidationOpen(true); // <-- Move this here
     } catch (err) {
       setValidationResult('Error: ' + err.message);
+      setValidationOpen(true); // <-- And here, for error case
     } finally {
       setValidationLoading(false);
     }
@@ -249,7 +346,11 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/scene-1-vector-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, outline, scene1Script })
+        body: JSON.stringify({ 
+          apiKey, 
+          outline, 
+          sceneScript: scenes[1] 
+        })
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error);
@@ -261,9 +362,59 @@ function App() {
     }
   };
 
-  const handleWritersRoom = async () => {
+  const handleScene2Validate = async () => {
+    setScene2VectorLoading(true);
+    setScene2VectorInfo(null);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/scene-1-vector-info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          apiKey, 
+          outline, 
+          sceneScript: scenes[2] 
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setScene2VectorInfo(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setScene2VectorLoading(false);
+    }
+  };
+
+  const handleWritersRoom = async (sceneNumber) => {
     setWritersRoomLoading(true);
-    setWritersRoomResults(null);
+    setError('');
+    try {
+      // Use different endpoint for scene 1
+      const endpoint = sceneNumber === 1 ? '/scene-1-writers-room' : `/scene-writers-room/${sceneNumber}`;
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          apiKey, 
+          outline,
+          current_scene_script: scenes[sceneNumber]  // Add current scene script
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setWritersRoomResultsByScene(prev => ({ ...prev, [sceneNumber]: data }));
+      setShowWritersRoom(prev => ({ ...prev, [sceneNumber]: true }));  // Set show state for specific scene
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setWritersRoomLoading(false);
+    }
+  };
+
+  const handleWritersRoom2 = async () => {
+    setWritersRoomLoading2(true);
+    setWritersRoomResults2(null);
     setError('');
     try {
       const response = await fetch(`${API_BASE_URL}/scene-1-writers-room`, {
@@ -273,51 +424,72 @@ function App() {
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error);
-      setWritersRoomResults(data);
-      setShowWritersRoom(true);
+      setWritersRoomResults2(data);
+      setShowWritersRoom2(true);
     } catch (err) {
       setError(err.message);
     } finally {
-      setWritersRoomLoading(false);
+      setWritersRoomLoading2(false);
+    }
+  };
+
+  const handleVectorInfo = async (sceneNumber) => {
+    setVectorLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/scene-vector-info/${sceneNumber}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          apiKey, 
+          outline, 
+          sceneScript: scenes[sceneNumber] 
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setVectorInfoByScene(prev => ({ ...prev, [sceneNumber]: data }));
+      setShowVectorInfo(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setVectorLoading(false);
     }
   };
 
   const handleNext = async () => {
-    setError('');
-    // Simulate initialization
-    if (!sceneFlow && activeStep === 1) {
-      setProgress(0);
-      setLoading(true);
-      let value = 0;
-      const interval = setInterval(() => {
-        value += 10;
-        setProgress(value);
-        if (value >= 100) {
-          clearInterval(interval);
-          setLoading(false);
-          setActiveStep((prev) => prev + 1);
-        }
-      }, 100);
-      return;
+    if (currentFlow === 'concept') {
+      if (activeStep === 1) {
+        // Generate concept and move to next step
+        await generateConcept();
+        setActiveStep(2);
+      } else if (activeStep === 2) {
+        // Generate outline and move to next step
+        await generateOutline();
+        setActiveStep(3);
+      } else if (activeStep === conceptSteps.length - 1) {
+        // Switch to scene flow and generate Scene 1
+        setCurrentFlow('scenes');
+        setActiveStep(0);
+        await generateScene1();
+      } else {
+        setActiveStep(prev => prev + 1);
+      }
+    } else {
+      // In scene flow, generate next scene
+      const nextSceneNumber = activeStep + 2; // +2 because activeStep starts at 0 and we want scene 2
+      await generateNextScene(nextSceneNumber);
     }
-    // Start scene flow after outline
-    if (!sceneFlow && activeStep === 5) {
-      setSceneFlow(true);
-      setActiveStep(0);
-      setScene1Script('');
-      return;
-    }
-    setActiveStep((prev) => prev + 1);
   };
 
   const handleBack = () => {
-    setError('');
-    if (sceneFlow && activeStep === 0) {
-      setSceneFlow(false);
-      setActiveStep(5); // Go back to outline step
-      return;
+    if (currentFlow === 'scenes' && activeStep === 0) {
+      // Go back to concept flow
+      setCurrentFlow('concept');
+      setActiveStep(conceptSteps.length - 1);
+    } else {
+      setActiveStep(prev => prev - 1);
     }
-    setActiveStep((prev) => prev - 1);
   };
 
   const handleKeywordChange = (category) => (event) => {
@@ -327,415 +499,604 @@ function App() {
     });
   };
 
-  // Scene stepper
-  const sceneSteps = ['Scene 1'];
+  const handleDownloadPDF = (sceneNumber) => {
+    const script = scenes[sceneNumber];
+    if (!script) return;
 
-  const renderStepContent = (step) => {
-    if (!sceneFlow) {
-      if (step === 0) {
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Enter your OpenAI API Key
-            </Typography>
-            <TextField
-              fullWidth
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              margin="normal"
-            />
-          </Box>
-        );
-      }
-      if (step === 1) {
-        return (
-          <Box sx={{ textAlign: 'center', py: 6 }}>
-            <LinearProgress variant="determinate" value={progress} sx={{ mb: 2 }} />
-            <Typography variant="h6">Initializing embedding model and AI agents...</Typography>
-          </Box>
-        );
-      }
-      if (step === 2) {
-        // All keyword categories on one screen
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Enter Keywords for Your Sitcom
-            </Typography>
-            {categories.map((cat) => (
-              <TextField
-                key={cat.key}
-                fullWidth
-                label={cat.label}
-                value={keywords[cat.key]}
-                onChange={handleKeywordChange(cat.key)}
-                margin="normal"
-                helperText={cat.prompt}
-                sx={{ mb: 2 }}
-              />
-            ))}
-          </Box>
-        );
-      }
-      if (step === 3) {
-        // Confirmation step
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Confirm Your Keywords
-            </Typography>
-            <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
-              {categories.map((cat) => (
-                <Box key={cat.key} sx={{ mb: 1 }}>
-                  <Typography variant="subtitle1">{cat.label}:</Typography>
-                  <Typography>{keywords[cat.key]}</Typography>
-                </Box>
-              ))}
-            </Paper>
-          </Box>
-        );
-      }
-      if (step === 4) {
-        // Sitcom concept step
-        const { title, description } = parseSitcomConcept(sitcomConcept || '');
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Generated Sitcom Concept
-            </Typography>
-            {loading ? (
-              <Box sx={{ textAlign: 'center', py: 6 }}>
-                <CircularProgress sx={{ mb: 2 }} />
-                <Typography>Generating sitcom concept...</Typography>
-              </Box>
-            ) : (
-              <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
-                {title && (
-                  <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
-                    {title}
-                  </Typography>
-                )}
-                <Typography sx={{ whiteSpace: 'pre-line' }}>
-                  {description}
-                </Typography>
-              </Paper>
-            )}
-          </Box>
-        );
-      }
-      if (step === 5) {
-        // Outline step
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Generated Outline
-            </Typography>
-            <Button
-              variant="outlined"
-              sx={{ mb: 2, mr: 2 }}
-              onClick={validateOutline}
-              disabled={validationLoading || loading}
-            >
-              {validationLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-              Validate Outline
-            </Button>
-            <Button
-              variant="contained"
-              sx={{ mb: 2 }}
-              onClick={handleNext}
-              disabled={loading}
-            >
-              Generate Scripts
-            </Button>
-            <Modal
-              open={validationOpen}
-              onClose={() => setValidationOpen(false)}
-              aria-labelledby="validation-modal-title"
-              aria-describedby="validation-modal-description"
-            >
-              <Box sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                bgcolor: 'background.paper',
-                boxShadow: 24,
-                p: 4,
-                borderRadius: 2,
-                minWidth: 300,
-                maxWidth: 500
-              }}>
-                <Typography id="validation-modal-title" variant="h6" gutterBottom>
-                  Outline Validation
-                </Typography>
-                <Typography id="validation-modal-description" sx={{ whiteSpace: 'pre-line' }}>
-                  {validationResult}
-                </Typography>
-                <Box sx={{ mt: 2, textAlign: 'right' }}>
-                  <Button onClick={() => setValidationOpen(false)} variant="contained">Close</Button>
-                </Box>
-              </Box>
-            </Modal>
-            {loading ? (
-              <Box sx={{ textAlign: 'center', py: 6 }}>
-                <CircularProgress sx={{ mb: 2 }} />
-                <Typography>Generating outline...</Typography>
-              </Box>
-            ) : (
-              <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
-                {formatOutline(outline)}
-              </Paper>
-            )}
-          </Box>
-        );
-      }
+    // Get sitcom title (parse from concept or use a state variable)
+    let title = '';
+    if (concept) {
+      const match = concept.match(/Title:\s*"?([^"]+)"?/i);
+      if (match) title = match[1].replace(/\s+/g, '_');
+      else title = 'sitcom';
     } else {
-      // Scene generation flow
-      if (step === 0) {
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Scene 1 Script
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-              <Button variant="outlined" onClick={() => setShowOutlineModal(true)}>
-                Show Outline
-              </Button>
-              <Button variant="outlined" onClick={() => setShowConceptModal(true)}>
-                Show Concept
-              </Button>
-            </Box>
-            <Modal
-              open={showOutlineModal}
-              onClose={() => setShowOutlineModal(false)}
-              aria-labelledby="outline-modal-title"
-              aria-describedby="outline-modal-description"
-            >
-              <Box sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                bgcolor: 'background.paper',
-                boxShadow: 24,
-                p: 4,
-                borderRadius: 2,
-                minWidth: 300,
-                maxWidth: 600,
-                maxHeight: '80vh',
-                overflowY: 'auto'
-              }}>
-                <Typography id="outline-modal-title" variant="h6" gutterBottom>
-                  Full Outline
-                </Typography>
-                {formatOutline(outline)}
-                <Box sx={{ mt: 2, textAlign: 'right' }}>
-                  <Button onClick={() => setShowOutlineModal(false)} variant="contained">Close</Button>
-                </Box>
-              </Box>
-            </Modal>
-            <Modal
-              open={showConceptModal}
-              onClose={() => setShowConceptModal(false)}
-              aria-labelledby="concept-modal-title"
-              aria-describedby="concept-modal-description"
-            >
-              <Box sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                bgcolor: 'background.paper',
-                boxShadow: 24,
-                p: 4,
-                borderRadius: 2,
-                minWidth: 300,
-                maxWidth: 600,
-                maxHeight: '80vh',
-                overflowY: 'auto'
-              }}>
-                <Typography id="concept-modal-title" variant="h6" gutterBottom>
-                  Sitcom Concept
-                </Typography>
-                {(() => {
-                  const { title, description } = parseSitcomConcept(sitcomConcept || '');
-                  return <>
-                    {title && (
-                      <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>{title}</Typography>
-                    )}
-                    <Typography sx={{ whiteSpace: 'pre-line' }}>{description}</Typography>
-                  </>;
-                })()}
-                <Box sx={{ mt: 2, textAlign: 'right' }}>
-                  <Button onClick={() => setShowConceptModal(false)} variant="contained">Close</Button>
-                </Box>
-              </Box>
-            </Modal>
-            {loading ? (
-              <Box sx={{ textAlign: 'center', py: 6 }}>
-                <CircularProgress sx={{ mb: 2 }} />
-                <Typography>Generating Scene 1 script...</Typography>
-              </Box>
-            ) : (
-              <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
-                <Typography sx={{ whiteSpace: 'pre-line' }}>{scene1Script || 'No script generated.'}</Typography>
-              </Paper>
-            )}
-            <Box sx={{ mt: 3, mb: 2, display: 'flex', justifyContent: 'space-between' }}>
-              <Button
-                variant="contained"
-                color="success"
-                onClick={handleScene1Validate}
-                disabled={scene1VectorLoading || loading}
-              >
-                {scene1VectorLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-                Validate
-              </Button>
-              {scene1VectorInfo && !showWritersRoom && (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleWritersRoom}
-                  disabled={writersRoomLoading}
-                  sx={{ ml: 'auto' }}
-                >
-                  {writersRoomLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-                  Writer's Room
-                </Button>
-              )}
-            </Box>
-            {scene1VectorInfo && (
-              <Paper elevation={2} sx={{ p: 2, mt: 2, background: '#f5f5f5' }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>Scene 1 Vector DB Info</Typography>
-                <Typography><b>Summary:</b> {scene1VectorInfo.summary}</Typography>
-                <Typography><b>Characters:</b>{scene1VectorInfo.characters}</Typography>
-                <Typography><b>Location:</b> {scene1VectorInfo.location}</Typography>
-                <Typography><b>Recurring Joke:</b> {scene1VectorInfo.recurring_joke}</Typography>
-                <Typography><b>Emotional Tone:</b> {scene1VectorInfo.emotional_tone}</Typography>
-              </Paper>
-            )}
-            {showWritersRoom && writersRoomResults && (
-              <Paper elevation={2} sx={{ p: 3, mt: 3, background: '#e3f2fd' }}>
-                <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2 }}>
-                  Writer's Room — Scene 2 Planning
-                </Typography>
+      title = 'sitcom';
+    }
 
-                {/* Character Agent */}
-                <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>
-                    Character Agent
-                  </Typography>
-                  <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    Consistency:&nbsp;
-                    {writersRoomResults.character.is_consistent
-                      ? <CheckCircleIcon color="success" fontSize="small" />
-                      : <CancelIcon color="error" fontSize="small" />}
-                    &nbsp;{writersRoomResults.character.is_consistent ? 'Consistent' : 'Inconsistent'}
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Explanation:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {splitNumbered(writersRoomResults.character.explanation).map((item, i) => (
-                        <li key={i}>{item}</li>
-                      ))}
-                    </ul>
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Recommendations:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {splitRecommendations(writersRoomResults.character.recommendations).map((rec, i) => (
-                        <li key={i}>{rec}</li>
-                      ))}
-                    </ul>
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Agent's Thoughts:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {writersRoomResults.character.thoughts.map((t, i) => <li key={i}>{t}</li>)}
-                    </ul>
-                  </Typography>
-                </Paper>
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(`${title.replace(/_/g, ' ')} - Scene ${sceneNumber}`, 10, 20);
+    doc.setFontSize(12);
 
-                {/* Comedic Agent */}
-                <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>
-                    Comedic Agent
-                  </Typography>
-                  <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    Comedic Tone:&nbsp;
-                    {writersRoomResults.comedic.is_consistent
-                      ? <CheckCircleIcon color="success" fontSize="small" />
-                      : <CancelIcon color="error" fontSize="small" />}
-                    &nbsp;{writersRoomResults.comedic.is_consistent ? 'Consistent' : 'Inconsistent'}
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Analysis:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {splitNumbered(writersRoomResults.comedic.analysis).map((item, i) => (
-                        <li key={i}>{item}</li>
-                      ))}
-                    </ul>
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Recommendations:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {splitRecommendations(writersRoomResults.comedic.recommendations).map((rec, i) => (
-                        <li key={i}>{rec}</li>
-                      ))}
-                    </ul>
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Agent's Thoughts:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {writersRoomResults.comedic.thoughts.map((t, i) => <li key={i}>{t}</li>)}
-                    </ul>
-                  </Typography>
-                </Paper>
+    // Split script into lines for PDF
+    const lines = doc.splitTextToSize(script, 180);
+    doc.text(lines, 10, 35);
 
-                {/* Environment Agent */}
-                <Paper elevation={1} sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>
-                    Environment Agent
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Analysis:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {splitByDash(writersRoomResults.environment.analysis).map((item, i) => (
-                        <li key={i}>{item}</li>
-                      ))}
-                    </ul>
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Transition:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {splitByDash(writersRoomResults.environment.transition).map((item, i) => (
-                        <li key={i}>{item}</li>
-                      ))}
-                    </ul>
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Detail Suggestions:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {splitRecommendations(writersRoomResults.environment.details_suggestions).map((rec, i) => (
-                        <li key={i}>{rec}</li>
-                      ))}
-                    </ul>
-                  </Typography>
-                  <Typography sx={{ mb: 1 }}>
-                    <b>Agent's Thoughts:</b>
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {writersRoomResults.environment.thoughts.map((t, i) => <li key={i}>{t}</li>)}
-                    </ul>
-                  </Typography>
-                </Paper>
-              </Paper>
-            )}
-          </Box>
-        );
+    doc.save(`${title}_scene${sceneNumber}.pdf`);
+  };
+
+  const handleDownloadFullScript = () => {
+    let script = '';
+    for (let i = 1; i <= 20; i++) {
+      if (scenes[i]) {
+        script += `Scene ${i}\n\n${scenes[i]}\n\n`;
       }
     }
-    return null;
+    let title = '';
+    if (concept) {
+      const match = concept.match(/Title:\s*"?([^"\n]+)"?/i);
+      if (match) title = match[1].replace(/\s+/g, '_');
+      else title = 'sitcom';
+    } else {
+      title = 'sitcom';
+    }
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(`${title.replace(/_/g, ' ')} - Complete Script`, 10, 20);
+    doc.setFontSize(12);
+    const lines = doc.splitTextToSize(script, 180);
+    doc.text(lines, 10, 35);
+    doc.save(`${title}_complete_script.pdf`);
+  };
+
+  const renderStepContent = (step) => {
+    if (currentFlow === 'concept') {
+      switch (step) {
+        case 0:
+          return (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Enter your OpenAI API Key
+              </Typography>
+              <TextField
+                fullWidth
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                margin="normal"
+              />
+            </Box>
+          );
+        case 1:
+          return (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Enter Keywords for Your Sitcom
+              </Typography>
+              {categories.map((cat) => (
+                <TextField
+                  key={cat.key}
+                  fullWidth
+                  label={cat.label}
+                  value={keywords[cat.key]}
+                  onChange={(e) => setKeywords(prev => ({ ...prev, [cat.key]: e.target.value }))}
+                  margin="normal"
+                  helperText={cat.prompt}
+                  sx={{ mb: 2 }}
+                />
+              ))}
+              {concept && (
+                <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
+                  <Typography variant="h6" gutterBottom>Generated Concept:</Typography>
+                  <Typography sx={{ whiteSpace: 'pre-line' }}>{concept}</Typography>
+                </Paper>
+              )}
+            </Box>
+          );
+        case 2:
+          return (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Generated Concept
+              </Typography>
+              {concept && (
+                <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
+                  {(() => {
+                    const { title, description } = parseSitcomConcept(concept || '');
+                    return <>
+                      {title && (
+                        <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>{title}</Typography>
+                      )}
+                      <Typography sx={{ whiteSpace: 'pre-line' }}>{description}</Typography>
+                    </>;
+                  })()}
+                </Paper>
+              )}
+            </Box>
+          );
+        case 3:
+          return (
+            <Box>
+              <Button 
+                variant="contained" 
+                onClick={validateOutline} 
+                disabled={validationLoading || loading}
+                sx={{ mb: 2 }}
+              >
+                {validationLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                Validate Outline
+              </Button>
+              {outline && (
+                <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
+                  <Typography variant="h6" gutterBottom>Generated Outline:</Typography>
+                  {formatOutline(outline)}
+                </Paper>
+              )}
+              <Modal
+                open={validationOpen}
+                onClose={() => setValidationOpen(false)}
+                aria-labelledby="validation-modal-title"
+                aria-describedby="validation-modal-description"
+              >
+                <Box sx={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '80%',
+                  maxWidth: 800,
+                  bgcolor: 'background.paper',
+                  boxShadow: 24,
+                  p: 4,
+                  borderRadius: 2,
+                  maxHeight: '80vh',
+                  overflow: 'auto'
+                }}>
+                  <Typography id="validation-modal-title" variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                    Outline Validation Results
+                  </Typography>
+                  {validationLoading ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4 }}>
+                      <CircularProgress sx={{ mr: 2 }} />
+                      <Typography>Validating outline...</Typography>
+                    </Box>
+                  ) : (
+                    <>
+                      <Typography id="validation-modal-description" sx={{ 
+                        whiteSpace: 'pre-line',
+                        mb: 3,
+                        p: 2,
+                        bgcolor: '#f5f5f5',
+                        borderRadius: 1
+                      }}>
+                        {validationResult}
+                      </Typography>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                        <Button 
+                          onClick={() => setValidationOpen(false)} 
+                          variant="contained"
+                          sx={{ minWidth: 100 }}
+                        >
+                          Close
+                        </Button>
+                      </Box>
+                    </>
+                  )}
+                </Box>
+              </Modal>
+            </Box>
+          );
+        default:
+          return null;
+      }
+    } else {
+      // Scene flow
+      const sceneNumber = step + 1;
+      return (
+        <Box>
+          <Typography variant="h6" gutterBottom>
+            Scene {sceneNumber}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <Button variant="outlined" onClick={() => setShowOutlineModal(true)}>
+              Show Outline
+            </Button>
+            <Button variant="outlined" onClick={() => setShowConceptModal(true)}>
+              Show Concept
+            </Button>
+          </Box>
+          
+          {/* Outline Modal */}
+          <Modal
+            open={showOutlineModal}
+            onClose={() => setShowOutlineModal(false)}
+            aria-labelledby="outline-modal-title"
+          >
+            <Box sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '80%',
+              maxWidth: 800,
+              bgcolor: 'background.paper',
+              boxShadow: 24,
+              p: 4,
+              borderRadius: 2,
+              maxHeight: '80vh',
+              overflow: 'auto'
+            }}>
+              <Typography id="outline-modal-title" variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Episode Outline
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {formatOutline(outline)}
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+                <Button 
+                  onClick={() => setShowOutlineModal(false)} 
+                  variant="contained"
+                  sx={{ minWidth: 100 }}
+                >
+                  Close
+                </Button>
+              </Box>
+            </Box>
+          </Modal>
+
+          {/* Concept Modal */}
+          <Modal
+            open={showConceptModal}
+            onClose={() => setShowConceptModal(false)}
+            aria-labelledby="concept-modal-title"
+          >
+            <Box sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '80%',
+              maxWidth: 800,
+              bgcolor: 'background.paper',
+              boxShadow: 24,
+              p: 4,
+              borderRadius: 2,
+              maxHeight: '80vh',
+              overflow: 'auto'
+            }}>
+              <Typography id="concept-modal-title" variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Sitcom Concept
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                {(() => {
+                  const { title, description } = parseSitcomConcept(concept || '');
+                  return (
+                    <>
+                      {title && (
+                        <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>{title}</Typography>
+                      )}
+                      <Typography sx={{ whiteSpace: 'pre-line' }}>{description}</Typography>
+                    </>
+                  );
+                })()}
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+                <Button 
+                  onClick={() => setShowConceptModal(false)} 
+                  variant="contained"
+                  sx={{ minWidth: 100 }}
+                >
+                  Close
+                </Button>
+              </Box>
+            </Box>
+          </Modal>
+          
+          {sceneNumber === 1 ? (
+            <>
+              {scenes[1] && (
+                <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
+                  <Typography sx={{ whiteSpace: 'pre-line' }}>{scenes[1]}</Typography>
+                  <Button
+                    variant="outlined"
+                    sx={{ mt: 2 }}
+                    onClick={() => handleDownloadPDF(1)}
+                  >
+                    Download Scene 1
+                  </Button>
+                </Paper>
+              )}
+              {scenes[1] && (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    onClick={() => handleVectorInfo(1)}
+                    disabled={vectorLoading}
+                  >
+                    {vectorLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                    View Scene Metadata
+                  </Button>
+                </Box>
+              )}
+              {showVectorInfo && vectorInfoByScene[1] && (
+                <Paper elevation={2} sx={{ p: 2, mt: 2, background: '#f5f5f5' }}>
+                  <Typography variant="h6" gutterBottom>Vector Info for Scene 1:</Typography>
+                  <Typography><b>Summary:</b> {vectorInfoByScene[1].summary}</Typography>
+                  <Typography><b>Characters:</b> {vectorInfoByScene[1].characters}</Typography>
+                  <Typography><b>Location:</b> {vectorInfoByScene[1].location}</Typography>
+                  <Typography><b>Recurring Joke:</b> {vectorInfoByScene[1].recurring_joke}</Typography>
+                  <Typography><b>Emotional Tone:</b> {vectorInfoByScene[1].emotional_tone}</Typography>
+                </Paper>
+              )}
+              {showVectorInfo && vectorInfoByScene[1] && (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => handleWritersRoom(1)}
+                    disabled={writersRoomLoading}
+                  >
+                    {writersRoomLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                    Open Writer's Room
+                  </Button>
+                </Box>
+              )}
+              {showWritersRoom[1] && writersRoomResultsByScene[1] && (
+                <Paper elevation={2} sx={{ p: 3, mt: 3, background: '#e3f2fd' }}>
+                  <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2 }}>
+                    Writer's Room Results for Scene 1
+                  </Typography>
+                  
+                  <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Character Analysis</Typography>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      Consistency:&nbsp;
+                      {writersRoomResultsByScene[1]?.character?.is_consistent
+                        ? <CheckCircleIcon color="success" fontSize="small" />
+                        : <CancelIcon color="error" fontSize="small" />}
+                      &nbsp;{writersRoomResultsByScene[1]?.character?.is_consistent ? 'Consistent' : 'Inconsistent'}
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Explanation:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[1].character.explanation ? 
+                          splitNumbered(writersRoomResultsByScene[1].character.explanation).map((item, i) => (
+                            <li key={i}>{item}</li>
+                          )) : <li>No explanation available</li>}
+                      </ul>
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Recommendations:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[1].character.recommendations ? 
+                          splitRecommendations(writersRoomResultsByScene[1].character.recommendations).map((rec, i) => (
+                            <li key={i}>{rec}</li>
+                          )) : <li>No recommendations available</li>}
+                      </ul>
+                    </Typography>
+                  </Paper>
+
+                  <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Comedic Analysis</Typography>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      Comedic Tone:&nbsp;
+                      {writersRoomResultsByScene[1].comedic.is_consistent
+                        ? <CheckCircleIcon color="success" fontSize="small" />
+                        : <CancelIcon color="error" fontSize="small" />}
+                      &nbsp;{writersRoomResultsByScene[1].comedic.is_consistent ? 'Consistent' : 'Inconsistent'}
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Analysis:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[1].comedic.analysis ? 
+                          splitNumbered(writersRoomResultsByScene[1].comedic.analysis).map((item, i) => (
+                            <li key={i}>{item}</li>
+                          )) : <li>No analysis available</li>}
+                      </ul>
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Recommendations:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[1].comedic.recommendations ? 
+                          splitRecommendations(writersRoomResultsByScene[1].comedic.recommendations).map((rec, i) => (
+                            <li key={i}>{rec}</li>
+                          )) : <li>No recommendations available</li>}
+                      </ul>
+                    </Typography>
+                  </Paper>
+
+                  <Paper elevation={1} sx={{ p: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Environment Analysis</Typography>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      Consistency:&nbsp;
+                      {writersRoomResultsByScene[1]?.environment?.is_consistent
+                        ? <CheckCircleIcon color="success" fontSize="small" />
+                        : <CancelIcon color="error" fontSize="small" />}
+                      &nbsp;{writersRoomResultsByScene[1]?.environment?.is_consistent ? 'Consistent' : 'Inconsistent'}
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Transition:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[1]?.environment?.explanation ? 
+                          splitByDash(writersRoomResultsByScene[1]?.environment?.explanation || '').map((item, i) => (
+                            <li key={i}>{item}</li>
+                          )) : <li>No transition analysis available</li>}
+                      </ul>
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Suggestions:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[1]?.environment?.details_suggestions ? 
+                          splitRecommendations(writersRoomResultsByScene[1]?.environment?.details_suggestions || '').map((rec, i) => (
+                            <li key={i}>{rec}</li>
+                          )) : <li>No suggestions available</li>}
+                      </ul>
+                    </Typography>
+                  </Paper>
+                </Paper>
+              )}
+            </>
+          ) : (
+            <>
+              {scenes[sceneNumber] && (
+                <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
+                  <Typography sx={{ whiteSpace: 'pre-line' }}>{scenes[sceneNumber]}</Typography>
+                  <Button
+                    variant="outlined"
+                    sx={{ mt: 2 }}
+                    onClick={() => handleDownloadPDF(sceneNumber)}
+                  >
+                    Download Scene {sceneNumber}
+                  </Button>
+                </Paper>
+              )}
+              {scenes[sceneNumber] && (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    onClick={() => handleVectorInfo(sceneNumber)}
+                    disabled={vectorLoading}
+                  >
+                    {vectorLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                    View Scene Metadata
+                  </Button>
+                </Box>
+              )}
+              {showVectorInfo && vectorInfoByScene[sceneNumber] && (
+                <Paper elevation={2} sx={{ p: 2, mt: 2, background: '#f5f5f5' }}>
+                  <Typography variant="h6" gutterBottom>Vector Info for Scene {sceneNumber}:</Typography>
+                  <Typography><b>Summary:</b> {vectorInfoByScene[sceneNumber].summary}</Typography>
+                  <Typography><b>Characters:</b> {vectorInfoByScene[sceneNumber].characters}</Typography>
+                  <Typography><b>Location:</b> {vectorInfoByScene[sceneNumber].location}</Typography>
+                  <Typography><b>Recurring Joke:</b> {vectorInfoByScene[sceneNumber].recurring_joke}</Typography>
+                  <Typography><b>Emotional Tone:</b> {vectorInfoByScene[sceneNumber].emotional_tone}</Typography>
+                </Paper>
+              )}
+              {showVectorInfo && vectorInfoByScene[sceneNumber] && (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => handleWritersRoom(sceneNumber)}
+                    disabled={writersRoomLoading}
+                  >
+                    {writersRoomLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                    Open Writer's Room
+                  </Button>
+                </Box>
+              )}
+              {showWritersRoom[sceneNumber] && writersRoomResultsByScene[sceneNumber] && (
+                <Paper elevation={2} sx={{ p: 3, mt: 3, background: '#e3f2fd' }}>
+                  <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2 }}>
+                    Writer's Room Results for Scene {sceneNumber}
+                  </Typography>
+                  
+                  <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Character Analysis</Typography>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      Consistency:&nbsp;
+                      {writersRoomResultsByScene[sceneNumber]?.character?.is_consistent
+                        ? <CheckCircleIcon color="success" fontSize="small" />
+                        : <CancelIcon color="error" fontSize="small" />}
+                      &nbsp;{writersRoomResultsByScene[sceneNumber]?.character?.is_consistent ? 'Consistent' : 'Inconsistent'}
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Explanation:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[sceneNumber].character.explanation ? 
+                          splitNumbered(writersRoomResultsByScene[sceneNumber].character.explanation).map((item, i) => (
+                            <li key={i}>{item}</li>
+                          )) : <li>No explanation available</li>}
+                      </ul>
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Recommendations:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[sceneNumber].character.recommendations ? 
+                          splitRecommendations(writersRoomResultsByScene[sceneNumber].character.recommendations).map((rec, i) => (
+                            <li key={i}>{rec}</li>
+                          )) : <li>No recommendations available</li>}
+                      </ul>
+                    </Typography>
+                  </Paper>
+
+                  <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Comedic Analysis</Typography>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      Comedic Tone:&nbsp;
+                      {writersRoomResultsByScene[sceneNumber].comedic.is_consistent
+                        ? <CheckCircleIcon color="success" fontSize="small" />
+                        : <CancelIcon color="error" fontSize="small" />}
+                      &nbsp;{writersRoomResultsByScene[sceneNumber].comedic.is_consistent ? 'Consistent' : 'Inconsistent'}
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Analysis:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[sceneNumber].comedic.analysis ? 
+                          splitNumbered(writersRoomResultsByScene[sceneNumber].comedic.analysis).map((item, i) => (
+                            <li key={i}>{item}</li>
+                          )) : <li>No analysis available</li>}
+                      </ul>
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Recommendations:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[sceneNumber].comedic.recommendations ? 
+                          splitRecommendations(writersRoomResultsByScene[sceneNumber].comedic.recommendations).map((rec, i) => (
+                            <li key={i}>{rec}</li>
+                          )) : <li>No recommendations available</li>}
+                      </ul>
+                    </Typography>
+                  </Paper>
+
+                  <Paper elevation={1} sx={{ p: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Environment Analysis</Typography>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      Consistency:&nbsp;
+                      {writersRoomResultsByScene[sceneNumber]?.environment?.is_consistent
+                        ? <CheckCircleIcon color="success" fontSize="small" />
+                        : <CancelIcon color="error" fontSize="small" />}
+                      &nbsp;{writersRoomResultsByScene[sceneNumber]?.environment?.is_consistent ? 'Consistent' : 'Inconsistent'}
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Transition:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[sceneNumber]?.environment?.explanation ? 
+                          splitByDash(writersRoomResultsByScene[sceneNumber]?.environment?.explanation || '').map((item, i) => (
+                            <li key={i}>{item}</li>
+                          )) : <li>No transition analysis available</li>}
+                      </ul>
+                    </Typography>
+                    <Typography sx={{ mb: 1 }}>
+                      <b>Suggestions:</b>
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {writersRoomResultsByScene[sceneNumber]?.environment?.details_suggestions ? 
+                          splitRecommendations(writersRoomResultsByScene[sceneNumber]?.environment?.details_suggestions || '').map((rec, i) => (
+                            <li key={i}>{rec}</li>
+                          )) : <li>No suggestions available</li>}
+                      </ul>
+                    </Typography>
+                  </Paper>
+                </Paper>
+              )}
+              {sceneNumber === 20 && (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    onClick={handleDownloadFullScript}
+                  >
+                    Download Complete Script
+                  </Button>
+                </Box>
+              )}
+            </>
+          )}
+        </Box>
+      );
+    }
   };
 
   // Validation for keywords step
@@ -748,17 +1109,42 @@ function App() {
       </Typography>
       
       <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-        {sceneFlow
-          ? sceneSteps.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))
-          : steps.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
+        {currentFlow === 'concept' ? (
+          conceptSteps.map((label) => (
+            <Step key={label}>
+              <StepLabel>{label}</StepLabel>
+            </Step>
+          ))
+        ) : (
+          <Box>
+            {chunkArray(sceneSteps, 5).map((row, rowIdx) => (
+              <Stepper
+                key={rowIdx}
+                activeStep={activeStep - rowIdx * 5 >= 0 && activeStep - rowIdx * 5 < 5 ? activeStep - rowIdx * 5 : -1}
+                sx={{ mb: 1 }}
+              >
+                {row.map((label, idx) => {
+                  const globalIdx = rowIdx * 5 + idx;
+                  return (
+                    <Step key={label}>
+                      <StepLabel
+                        onClick={() => {
+                          if (scenes[globalIdx + 1]) setActiveStep(globalIdx);
+                        }}
+                        style={{
+                          cursor: scenes[globalIdx + 1] ? 'pointer' : 'not-allowed',
+                          color: scenes[globalIdx + 1] ? 'inherit' : '#ccc'
+                        }}
+                      >
+                        {label}
+                      </StepLabel>
+                    </Step>
+                  );
+                })}
+              </Stepper>
             ))}
+          </Box>
+        )}
       </Stepper>
 
       {error && (
@@ -771,29 +1157,31 @@ function App() {
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
         <Button
-          disabled={activeStep === 0 || loading}
+          disabled={loading}
           onClick={handleBack}
         >
           Back
         </Button>
-        {!sceneFlow && (
-          <Button
-            variant="contained"
-            onClick={handleNext}
-            disabled={
-              loading ||
-              (activeStep === 0 && !apiKey) ||
-              (activeStep === 4 && loading) ||
-              (activeStep === 5 && loading)
-            }
-          >
-            {loading && (activeStep === 1 || activeStep === 4 || activeStep === 5) ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              activeStep === steps.length - 1 ? 'Finish' : 'Next'
-            )}
-          </Button>
-        )}
+        <Button
+          variant="contained"
+          onClick={handleNext}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <CircularProgress size={20} sx={{ mr: 1 }} />
+              {currentFlow === 'concept' && activeStep === 1 ? 'Generating Concept...' : 
+               currentFlow === 'concept' && activeStep === 2 ? 'Generating Outline...' : 
+               currentFlow === 'concept' && activeStep === conceptSteps.length - 1 ? 'Start Scenes' : 
+               currentFlow === 'scenes' ? 'Next Scene' : 'Next'}
+            </>
+          ) : (
+            currentFlow === 'concept' && activeStep === 1 ? 'Generate Concept' : 
+            currentFlow === 'concept' && activeStep === 2 ? 'Generate Outline' :
+            currentFlow === 'concept' && activeStep === conceptSteps.length - 1 ? 'Start Scenes' : 
+            currentFlow === 'scenes' ? 'Next Scene' : 'Next'
+          )}
+        </Button>
       </Box>
     </Container>
   );
