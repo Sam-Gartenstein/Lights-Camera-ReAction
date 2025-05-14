@@ -19,23 +19,47 @@ After that, each new scene is **scripted, reviewed, and improved** using special
 After generation, each scene is **summarized and stored in a vector database**, enabling fast retrieval of scene metadata for future story planning.  
 By combining **structured agent workflows** and **retrieval-augmented memory**, we bring sitcom worlds to life — one coherent, character-driven scene at a time.
 
+## 📖 Step-by-Step Tutorial (7%)
 
+**Follow these steps to get started and troubleshoot common issues:**
 
+### 1. Clear Installation Instructions
+- Clone the repository:
+  ```bash
+  git clone https://github.com/Sam-Gartenstein/lights-camera-reACTion.git
+  cd lights-camera-reACTion
+  ```
+- Install Python dependencies:
+  ```bash
+  pip install -r requirements.txt
+  ```
+- (If using the frontend) Install Node.js dependencies:
+  ```bash
+  npm install
+  ```
 
-## TODO:
+### 2. Environment Setup Guide
+- Copy the example environment file and add your OpenAI API key:
+  ```bash
+  cp .env.example .env
+  ```
+- Edit `.env` and set your `OPENAI_API_KEY`.
 
-- Add in description of workflow
-- Perhaps add in an editor agent that edits the previous scene (We have multiple for planning)
-- **IMPORTANT** When creating editor, perhaps move `verify_character_consistency` to an Editor Agent
-- Continue to refine Character Agent so it explicitly refers to prior scenes!
-- Perhaps make function for adding metadata to vector database
-- Make sure the script doesn't have "Fade Out" 
+### 3. Usage Examples and Demonstrations
+- **Run the backend Flask server:**
+  ```bash
+  cd backend
+  python app.py
+  ```
+- **(Optional) Run the frontend React app:**
+  ```bash
+  npm start
+  ```
+- Use the provided Jupyter notebook or API endpoints to generate sitcom concepts, outlines, and scripts.
 
-## Plan For Creating Baseline
-
-- Modify Generate Scene Prompt so it just takes in a description and recent scenes
-- Depenidng on the max number of tokens the prompt can take in, lets cap it at 3 scenes max
-   - First scene takes in description only
-   - Scene 2 takes in descreption and Scene 1
-   - Scene 3 takes in descreption and Scenes 2 and 1
-   - Scene 4 takes in descreption and Scenes 3, 2, and 1 so and so forth
+### 4. Troubleshooting Guide
+- **Common issues:**
+  - *Module not found*: Ensure all dependencies are installed.
+  - *API errors*: Check your OpenAI API key and internet connection.
+  - *Port conflicts*: Make sure ports 5000 (backend) and 3000 (frontend) are free.
+  - *File not ignored by git*: Double-check your `.gitignore` and use `git rm --cached <file>` if needed.
