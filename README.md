@@ -19,7 +19,7 @@ After that, each new scene is **scripted, reviewed, and improved** using special
 After generation, each scene is **summarized and stored in a vector database**, enabling fast retrieval of scene metadata for future story planning.  
 By combining **structured agent workflows** and **retrieval-augmented memory**, we bring sitcom worlds to life — one coherent, character-driven scene at a time.
 
-## 📖 Step-by-Step Tutorial (7%)
+## Step-by-Step Guide for Web Application
 
 **Follow these steps to get started and troubleshoot common issues:**
 
