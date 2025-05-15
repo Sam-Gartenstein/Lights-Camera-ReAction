@@ -1,29 +1,33 @@
 
+import time
 
-def generate_scene_1_script(
-    client,
-    sitcom_title,
-    scene_description,
-    scene_index,
-    rag_context=None
-):
+def generate_scene_1_script(client, sitcom_title, scene_description, scene_index, rag_context=None,
+                            model="gpt-4", temperature=0.7, top_p=0.9):
     """
-    Generates the first sitcom scene script with natural comedic rhythm and logical laugh track placement.
-    Includes a numbered heading for the scene using scene_index, but avoids timestamp formatting.
+    Generates the first scene of a sitcom pilot episode using a scene description
+    and optional background context (RAG). Returns a fully formatted script with
+    consistent tone, pacing, and comedic rhythm.
+
+    This function constructs a scene specifically for the opening of the episode,
+    introducing characters, tone, and premise. It includes retry logic to handle
+    transient API failures up to 3 times.
 
     Args:
         client: OpenAI client instance.
         sitcom_title (str): Title of the sitcom.
         scene_description (str): Short summary of the first scene.
-        scene_index (int): Index number of the scene (e.g., 0 for Scene 1).
-        rag_context (str, optional): Background information to include in the prompt for continuity or world-building.
+        scene_index (int): Zero-based index of the scene (used to derive scene number).
+        rag_context (str, optional): Background information to integrate into the scene.
+        model (str): OpenAI model to use (default: "gpt-4").
+        temperature (float): Sampling temperature to control creativity (default: 0.7).
+        top_p (float): Nucleus sampling parameter for generation (default: 0.9).
 
     Returns:
-        str: The generated sitcom scene script.
+        str: Formatted script of the opening scene, prepended with a numbered heading (e.g., "# Scene 1").
 
     Raises:
-        ValueError: If the API response is malformed or empty.
-        Exception: For any other runtime or API-related errors.
+        ValueError: If the API response is empty or improperly structured.
+        Exception: After 3 failed attempts or other runtime errors.
     """
     context_section = f"\nRelevant background information:\n{rag_context}" if rag_context else ""
     scene_number = scene_index + 1
@@ -56,42 +60,49 @@ Scene Constraints:
 Only output the script.
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            top_p=0.9,
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p,
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        return f"{response.choices[0].message.content.strip()}"
+            return f"{scene_header}\n{response.choices[0].message.content.strip()}"
 
-    except Exception as e:
-        raise Exception(f"Error generating Scene {scene_number} script: {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error generating Scene {scene_number} script: {str(e)}")
+            time.sleep(2 ** attempt)
 
 
-def generate_scene(
-    client,
-    scene_plan: str,
-    scene_number: int
-) -> str:
+def generate_scene(client, scene_plan, scene_number, model="gpt-4", temperature=0.7, top_p=0.9):
     """
-    Generates a new sitcom scene based on a structured scene plan.
+    Generates a sitcom scene script based on a structured scene plan and scene number.
+
+    This function prompts the OpenAI API to produce a formatted scene using only the
+    content provided in the scene plan. It includes retry logic to handle transient
+    errors and adheres to specific formatting and content constraints to ensure
+    sitcom-appropriate structure and tone.
 
     Args:
-        client: OpenAI client for prompting.
-        scene_plan: The structured scene plan from the ScenePlannerAgent.
-        scene_number: The number for the next scene (e.g., 6 if last scene was 5).
+        client: OpenAI client instance.
+        scene_plan (str): A structured plan outlining the objectives and content of the scene.
+        scene_number (int): The numerical index of the scene in the episode (used for labeling).
+        model (str): OpenAI model to use (default: "gpt-4").
+        temperature (float): Sampling temperature to control creativity (default: 0.7).
+        top_p (float): Nucleus sampling parameter (default: 0.9).
 
     Returns:
-        str: The generated sitcom scene script.
+        str: A formatted sitcom script for the specified scene.
 
     Raises:
-        ValueError: If the API response is malformed or empty.
-        Exception: For any runtime or API-related errors.
+        ValueError: If the API response is empty or malformed.
+        Exception: After 3 failed attempts to complete the request.
     """
     prompt = f"""
 You are a sitcom scene writer.
@@ -120,49 +131,51 @@ Write a complete sitcom scene using only the provided goals and suggestions. End
 Now begin writing Scene {scene_number}:
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            top_p=0.9,
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p,
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        return response.choices[0].message.content.strip()
+            return response.choices[0].message.content.strip()
 
-    except Exception as e:
-        raise Exception(f"Error generating Scene {scene_number} script: {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error generating Scene {scene_number} script: {str(e)}")
+            time.sleep(2 ** attempt)
 
 
-def generate_scene_baseline(
-    client,
-    sitcom_title,
-    scene_description,
-    previous_scenes=None
-):
+def generate_scene_baseline(client, sitcom_title, scene_description, previous_scenes=None,
+                            model="gpt-4", temperature=0.7, top_p=0.9):
     """
-    Generates a sitcom scene script based on a description and optional prior scenes.
+    Generates a sitcom scene script using only a description and optional prior scenes
+    as context, without the aid of multi-agent prompting.
 
-    This is the baseline generation function for sitcom scenes. It produces a complete,
-    formatted script using a single prompt without the involvement of specialized agents
-    (e.g., comedy, character, or tone agents). The output can be used as a reference point
-    for evaluating the impact of multi-agent enhancements or prompt engineering strategies.
+    This function sends a single structured prompt to the OpenAI API and returns a
+    formatted sitcom script that continues the tone and dynamics from previous scenes,
+    if provided. Includes retry logic for robust error handling.
 
     Args:
-        client: OpenAI client.
+        client: OpenAI client instance.
         sitcom_title (str): Title of the sitcom.
-        scene_description (str): Short summary of the scene to generate.
+        scene_description (str): Short description of the scene to be generated.
         previous_scenes (list of str, optional): Prior scene scripts for continuity.
+        model (str): OpenAI model to use (default: "gpt-4").
+        temperature (float): Sampling temperature (default: 0.7).
+        top_p (float): Nucleus sampling parameter (default: 0.9).
 
     Returns:
-        str: Generated sitcom scene as a formatted script.
+        str: Formatted sitcom script for the current scene.
 
     Raises:
         ValueError: If the API response is malformed or empty.
-        Exception: For any runtime or API-related errors.
+        Exception: If the API fails after 3 retry attempts or another runtime error occurs.
     """
     if previous_scenes:
         combined_context = "\n\n".join(previous_scenes)
@@ -197,18 +210,21 @@ Constraints:
 Only output the script.
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            top_p=0.9,
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p,
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        return response.choices[0].message.content.strip()
+            return response.choices[0].message.content.strip()
 
-    except Exception as e:
-        raise Exception(f"Error generating baseline scene script: {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error generating baseline scene script: {str(e)}")
+            time.sleep(2 ** attempt)

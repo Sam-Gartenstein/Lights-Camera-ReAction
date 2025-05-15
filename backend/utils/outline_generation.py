@@ -1,21 +1,31 @@
 
-def generate_sitcom_pitch(client, keywords_dict=None):
+import time
+
+def generate_sitcom_pitch(client, keywords_dict=None, model="gpt-4", temperature=0.7, top_p=0.9):
     """
-    Generates an original sitcom pitch using optional user-provided keywords by category.
+    Generates an original sitcom pitch in paragraph form, optionally guided by
+    user-provided keywords in categories such as setting, characters, and tone.
+
+    The function sends a structured prompt to the OpenAI API and returns a sitcom
+    concept formatted with a title and single-paragraph description. Includes retry
+    logic (up to 3 attempts) to handle temporary API failures.
 
     Args:
         client: OpenAI client instance.
-        keywords_dict (dict of str -> list of str, optional): A dictionary of categorized keywords
-            (e.g., {'setting': [...], 'characters': [...], 'themes': [...], 'tone_genre': [...]}).
+        keywords_dict (dict of str -> list of str, optional): Optional categorized keywords
+            to guide generation (e.g., {'setting': [...], 'characters': [...], 'themes': [...]}).
+        model (str): OpenAI model to use (default: "gpt-4").
+        temperature (float): Sampling temperature for creativity (default: 0.7).
+        top_p (float): Nucleus sampling parameter (default: 0.9).
 
     Returns:
-        str: A 1-paragraph sitcom pitch in the format:
+        str: Sitcom pitch in the format:
              Title: "<sitcom title>"
-             <description>
+             <1-paragraph description>
 
     Raises:
-        ValueError: If the API response is malformed or empty.
-        Exception: For any other runtime or API-related errors.
+        ValueError: If the API response is empty or not formatted correctly.
+        Exception: After 3 failed retry attempts or for any runtime error.
     """
     idea_string = ""
     if keywords_dict:
@@ -41,39 +51,52 @@ Title: "<title of the sitcom in quotation marks>"
 <1-paragraph description of the show>
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            top_p=0.9,
-        )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p,
+            )
 
-        # Validate response structure
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        return response.choices[0].message.content.strip()
+            return response.choices[0].message.content.strip()
 
-    except Exception as e:
-        raise Exception(f"Error generating sitcom pitch: {str(e)}")
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise Exception(f"Error generating sitcom pitch: {str(e)}")
+            time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
 
 
-def generate_pilot_episode_outline(client, sitcom_pitch, num_scenes=20):
+def generate_pilot_episode_outline(client, sitcom_pitch, num_scenes=20, model="gpt-4", temperature=0.7, top_p=0.9):
     """
-    Generates a pilot episode outline from a sitcom pitch. The model decides the episode concept and scenes.
+    Generates a structured pilot episode outline for a sitcom, based on the provided pitch.
+
+    The model is prompted to write a brief episode concept followed by a breakdown
+    of approximately `num_scenes` scenes. Each scene includes a title and a concise
+    1–2 sentence summary. The function uses retry logic to handle transient API failures.
 
     Args:
-        client: OpenAI client
-        sitcom_pitch (str): Full sitcom pitch, including the title and description.
-        num_scenes (int): Approximate number of scenes to include (default = 20)
+        client: OpenAI client instance.
+        sitcom_pitch (str): Full sitcom pitch, including title and paragraph description.
+        num_scenes (int): Number of scenes to include in the outline (default: 20).
+        model (str): OpenAI model to use (default: "gpt-4").
+        temperature (float): Sampling temperature for creative variation (default: 0.7).
+        top_p (float): Nucleus sampling parameter (default: 0.9).
 
     Returns:
-        str: A formatted pilot episode outline with scene titles and summaries.
+        str: The complete episode outline, with the following format:
+            - Episode Concept (1–2 sentences)
+            - Scene-by-scene breakdown using:
+              Scene <number>: "<Title>" <summary>
 
     Raises:
-        ValueError: If the API response is malformed or empty.
-        Exception: For any other runtime or API-related errors.
+        ValueError: If the API response is empty or improperly formatted.
+        Exception: If all retries fail or another API-related issue occurs.
     """
     prompt = f"""
 You are a professional sitcom writer, pitching a new sitcom to your network.
@@ -97,19 +120,22 @@ Guidelines:
 - Return only the full pilot episode outline, formatted clearly and consistently as shown.
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            top_p=0.9,
-        )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p,
+            )
 
-        # Check that response is well-formed
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        return response.choices[0].message.content.strip()
+            return response.choices[0].message.content.strip()
 
-    except Exception as e:
-        raise Exception(f"Error generating pilot episode outline: {str(e)}")
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise Exception(f"Error generating pilot episode outline: {str(e)}")
+            time.sleep(2 ** attempt)  # Waits 1s, then 2s, then 4s on retries

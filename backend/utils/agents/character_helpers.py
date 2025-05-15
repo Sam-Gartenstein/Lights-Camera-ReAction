@@ -1,45 +1,64 @@
 
 from typing import Dict, List, Tuple
-
+import time
 
 def characters_extraction(
     client,
     scene_description: str,
     prior_scene_metadata: List[Dict],
     scene_number: int = None,
-    num_scenes: int = 3
+    num_scenes: int = 3,
+    model: str = "gpt-4",
+    temperature: float = 0.7,
+    top_p: float = 0.9
 ) -> Dict[str, List[str]]:
     """
-    Extracts characters from previous scenes and the current scene description,
-    and identifies former characters along with the scene numbers in which they appeared.
+    Extracts character information from a new scene description by comparing it to
+    previously established characters from recent scenes.
+
+    This function queries the OpenAI API to determine:
+    - All characters present in the current scene
+    - Which are newly introduced
+    - Which previously appeared but are now absent (with their scene numbers)
+
+    Includes retry logic (up to 3 attempts with exponential backoff) to handle transient failures.
+
+    Args:
+        client: OpenAI client instance.
+        scene_description: Text description of the current scene.
+        prior_scene_metadata: List of metadata dictionaries from previous scenes, including characters and scene numbers.
+        scene_number: Index of the current scene (used in output).
+        num_scenes: Number of recent scenes to consider when comparing character presence (default: 3).
+        model: OpenAI model to use (default: "gpt-4").
+        temperature: Sampling temperature for generation (default: 0.7).
+        top_p: Nucleus sampling parameter (default: 0.9).
 
     Returns:
-        Dictionary with:
-            - 'prior_characters': list of characters from prior scenes
-            - 'current_scene_characters': list of characters in the new scene
-            - 'new_characters': list of newly introduced characters
-            - 'former_characters': list of characters with prior scene numbers
-            - 'scene_number': current scene number
+        dict with:
+            - 'prior_characters': List of characters from prior scenes
+            - 'current_scene_characters': List of characters in the new scene
+            - 'new_characters': List of characters not seen in prior scenes
+            - 'former_characters': List of characters absent from this scene but present previously, with scene numbers
+            - 'scene_number': The index of the scene being evaluated
 
     Raises:
-        ValueError: If the API response is malformed or missing expected sections.
-        Exception: For any other API or runtime error.
+        ValueError: If the API response is malformed or missing.
+        Exception: After 3 failed retry attempts or other runtime issues.
     """
-    try:
-        # Filter to last `num_scenes` prior scenes
-        recent_scenes = prior_scene_metadata[-num_scenes:]
+    # Filter to last `num_scenes` prior scenes
+    recent_scenes = prior_scene_metadata[-num_scenes:]
 
-        # Map prior character appearances by scene number
-        character_scene_map = {}
-        for meta in recent_scenes:
-            for char in meta.get("characters", []):
-                character_scene_map.setdefault(char, []).append(meta.get("scene_number", "?"))
+    # Map prior character appearances by scene number
+    character_scene_map = {}
+    for meta in recent_scenes:
+        for char in meta.get("characters", []):
+            character_scene_map.setdefault(char, []).append(meta.get("scene_number", "?"))
 
-        prior_characters = set(character_scene_map.keys())
-        prior_characters_text = ", ".join(sorted(prior_characters)) if prior_characters else "None"
+    prior_characters = set(character_scene_map.keys())
+    prior_characters_text = ", ".join(sorted(prior_characters)) if prior_characters else "None"
 
-        # Build prompt
-        prompt = f"""
+    # Build prompt
+    prompt = f"""
 You are the Writers' Assistant on the sitcom writing team.
 
 Previously established characters: {prior_characters_text}
@@ -60,44 +79,48 @@ New Characters: [comma-separated list]
 Former Characters: [comma-separated list with scene numbers]
 """
 
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            top_p=1
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        result = response.choices[0].message.content.strip()
+            result = response.choices[0].message.content.strip()
 
-        # Parse output
-        current_scene_characters = []
-        new_characters = []
-        former_characters = []
+            # Parse output
+            current_scene_characters = []
+            new_characters = []
+            former_characters = []
 
-        for line in result.split("\n"):
-            if line.strip().startswith("Characters:"):
-                chars_text = line.split(":", 1)[1].strip().strip("[]")
-                current_scene_characters = [char.strip() for char in chars_text.split(",") if char.strip()]
-            elif line.strip().startswith("New Characters:"):
-                new_chars_text = line.split(":", 1)[1].strip().strip("[]")
-                new_characters = [char.strip() for char in new_chars_text.split(",") if char.strip()]
-            elif line.strip().startswith("Former Characters:"):
-                former_chars_text = line.split(":", 1)[1].strip().strip("[]")
-                former_characters = [char.strip() for char in former_chars_text.split(",") if char.strip()]
+            for line in result.split("\n"):
+                if line.strip().startswith("Characters:"):
+                    chars_text = line.split(":", 1)[1].strip().strip("[]")
+                    current_scene_characters = [char.strip() for char in chars_text.split(",") if char.strip()]
+                elif line.strip().startswith("New Characters:"):
+                    new_chars_text = line.split(":", 1)[1].strip().strip("[]")
+                    new_characters = [char.strip() for char in new_chars_text.split(",") if char.strip()]
+                elif line.strip().startswith("Former Characters:"):
+                    former_chars_text = line.split(":", 1)[1].strip().strip("[]")
+                    former_characters = [char.strip() for char in former_chars_text.split(",") if char.strip()]
 
-        return {
-            "prior_characters": sorted(list(prior_characters)),
-            "current_scene_characters": current_scene_characters,
-            "new_characters": new_characters,
-            "former_characters": former_characters,
-            "scene_number": scene_number
-        }
+            return {
+                "prior_characters": sorted(list(prior_characters)),
+                "current_scene_characters": current_scene_characters,
+                "new_characters": new_characters,
+                "former_characters": former_characters,
+                "scene_number": scene_number
+            }
 
-    except Exception as e:
-        raise Exception(f"Error extracting characters for Scene {scene_number}: {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error extracting characters for Scene {scene_number}: {str(e)}")
+            time.sleep(2 ** attempt)
 
 
 def retrieve_character_history(
@@ -105,42 +128,51 @@ def retrieve_character_history(
     character: str,
     vector_metadata: List[Dict],
     current_scene_description: str,
-    num_scenes: int = 1
+    num_scenes: int = 1,
+    model: str = "gpt-4",
+    temperature: float = 0.7,
+    top_p: float = 0.9
 ) -> Dict:
     """
     Retrieves or builds a character history using prior scenes or the current scene.
 
+    This function uses recent scene summaries to generate a grounded character profile.
+    If no prior summaries are available, it builds the profile based solely on the current
+    scene description. It includes retry logic for resilience against transient API failures.
+
     Args:
-        client: OpenAI client.
-        character: Character name to track.
-        vector_metadata: List of prior scene metadata.
-        current_scene_description: Current scene description.
-        num_scenes: Number of scenes to use for reasoning (default = 1).
+        client: OpenAI client instance.
+        character: Name of the character to generate a profile for.
+        vector_metadata: List of prior scene metadata dictionaries containing character and summary data.
+        current_scene_description: Description of the current scene.
+        num_scenes: Number of recent scenes to consider (default = 1).
+        model: Language model to use (default: "gpt-4").
+        temperature: Sampling temperature (default: 0.7).
+        top_p: Nucleus sampling parameter (default: 0.9).
 
     Returns:
-        Dict with character profile and source summaries:
-            - 'character': character name
-            - 'profile': full character profile generated from scenes
-            - 'source_summaries': list of scene summaries used as input
+        Dict with keys:
+            - 'character': Character name (str)
+            - 'profile': Generated character profile (str)
+            - 'source_summaries': List of source summaries used in generation (List[str])
 
     Raises:
-        ValueError: If the API response is empty or improperly formatted.
-        Exception: For general runtime or API-related issues.
+        ValueError: If the API response is empty or malformed.
+        Exception: If all retries fail or another error occurs.
     """
-    try:
-        # Filter scenes where character appears
-        relevant_scenes = [meta for meta in vector_metadata if character in meta.get("characters", [])]
-        recent_relevant_scenes = relevant_scenes[-num_scenes:]
-        relevant_summaries = [scene.get("summary", "") for scene in recent_relevant_scenes]
+    # Filter scenes where character appears
+    relevant_scenes = [meta for meta in vector_metadata if character in meta.get("characters", [])]
+    recent_relevant_scenes = relevant_scenes[-num_scenes:]
+    relevant_summaries = [scene.get("summary", "") for scene in recent_relevant_scenes]
 
-        if relevant_summaries:
-            # Annotate each summary with scene number
-            labeled_summaries = "\n\n".join([
-                f"Scene {scene.get('scene_number', '?')}:\n{scene.get('summary', '').strip()}"
-                for scene in recent_relevant_scenes
-            ])
+    if relevant_summaries:
+        # Annotate each summary with scene number
+        labeled_summaries = "\n\n".join([
+            f"Scene {scene.get('scene_number', '?')}:\n{scene.get('summary', '').strip()}"
+            for scene in recent_relevant_scenes
+        ])
 
-            prompt = f"""
+        prompt = f"""
 You are the Script Supervisor on the sitcom writing team.
 
 Based on the following prior scenes, build a detailed and **explicitly grounded** character profile for: {character}
@@ -159,8 +191,8 @@ Do not invent any traits or backstories not present in the text.
 Your output should show clear reasoning based on specific scene descriptions or numbers.
 Format clearly.
 """
-        else:
-            prompt = f"""
+    else:
+        prompt = f"""
 You are the Script Supervisor on the sitcom writing team.
 
 There are no previous scenes involving the character {character}.
@@ -178,60 +210,71 @@ If there is not enough evidence for any part, say so directly.
 Format clearly and label each section.
 """
 
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            top_p=1
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError(f"Received an empty or malformed response for character {character}.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError(f"Received an empty or malformed response for character {character}.")
 
-        return {
-            "character": character,
-            "profile": response.choices[0].message.content.strip(),
-            "source_summaries": relevant_summaries
-        }
+            return {
+                "character": character,
+                "profile": response.choices[0].message.content.strip(),
+                "source_summaries": relevant_summaries
+            }
 
-    except Exception as e:
-        raise Exception(f"Error retrieving history for character '{character}': {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error retrieving history for character '{character}': {str(e)}")
+            time.sleep(2 ** attempt)
 
 
 def verify_character_consistency(
     client,
     character_profiles: Dict[str, Dict],
     scene_description: str,
-    num_scenes: int = 1
+    num_scenes: int = 1,
+    model: str = "gpt-4",
+    temperature: float = 0.7,
+    top_p: float = 0.9
 ) -> Tuple[bool, str]:
     """
-    Verifies whether the upcoming scene's character actions are consistent with their
-    previously established traits and emotional arcs based on the last `num_scenes` scenes.
+    Checks whether the character behavior in a planned scene is consistent with
+    previously established traits and emotional arcs, based on prior scene profiles.
+
+    This function uses a structured prompt sent to the OpenAI API and includes retry
+    logic to handle transient failures (up to 3 attempts with exponential backoff).
 
     Args:
-        client: OpenAI client.
-        character_profiles: Dictionary mapping character names to a dictionary with:
-            - 'profile': Generated character profile text
-            - 'source_summaries': List of scene summaries used to build the profile
-        scene_description: The planned scene description to evaluate.
-        num_scenes: Number of past scenes considered for character context (default = 1).
+        client: OpenAI client instance.
+        character_profiles: Dictionary of character names mapped to their profile content,
+                            including summaries from past scenes.
+        scene_description: A short description of the planned scene to evaluate.
+        num_scenes: Number of past scenes considered for consistency checking (default = 1).
+        model: Language model used to perform evaluation (default: "gpt-4").
+        temperature: Sampling temperature for output variability (default: 0.7).
+        top_p: Nucleus sampling cutoff (default: 0.9).
 
     Returns:
         Tuple of:
-            - Boolean indicating whether the scene is consistent (True) or not (False)
-            - Model-generated explanation justifying the decision
+            - bool: True if the scene is consistent, False otherwise
+            - str: Justification from the model, beginning with the verdict
 
     Raises:
-        ValueError: If the API response is malformed or empty.
-        Exception: For general API or runtime issues.
+        ValueError: If the API response is empty or does not follow the expected format.
+        Exception: After 3 failed retry attempts or other runtime issues.
     """
-    try:
-        profiles_text = "\n\n".join([
-            f"Character: {char}\n{profile_data['profile']}"
-            for char, profile_data in character_profiles.items()
-        ])
+    profiles_text = "\n\n".join([
+        f"Character: {char}\n{profile_data['profile']}"
+        for char, profile_data in character_profiles.items()
+    ])
 
-        prompt = f"""
+    prompt = f"""
 You are the Head Writer on the sitcom writing team.
 
 Character Profiles (from the last {num_scenes} scene{'s' if num_scenes > 1 else ''}):
@@ -251,23 +294,27 @@ Respond exactly in this format:
 2. Short Explanation Why (max 5 lines)
 """
 
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            top_p=1
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        result = response.choices[0].message.content.strip()
-        is_consistent = "yes" in result.lower().split("\n")[0].lower()
+            result = response.choices[0].message.content.strip()
+            is_consistent = "yes" in result.lower().split("\n")[0].lower()
 
-        return is_consistent, result
+            return is_consistent, result
 
-    except Exception as e:
-        raise Exception(f"Error verifying character consistency: {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error verifying character consistency: {str(e)}")
+            time.sleep(2 ** attempt)
 
 
 def recommend_character_interactions(
@@ -276,43 +323,51 @@ def recommend_character_interactions(
     scene_description,
     num_scenes=1,
     is_consistent=True,
-    consistency_result=""
+    consistency_result="",
+    model: str = "gpt-4",
+    temperature: float = 0.7,
+    top_p: float = 0.9
 ) -> str:
     """
-    Recommends two grounded, meaningful character interactions for the given scene,
-    based on the last `num_scenes` scenes — or the current description if it's the first scene.
-    If the scene is inconsistent, suggestions may aim to resolve or revise those inconsistencies.
+    Recommends two grounded, meaningful character interactions for the given scene
+    based on character profiles and prior scene context.
+
+    This function sends a structured prompt to the OpenAI API and includes retry logic
+    to handle transient API failures. If the scene is flagged as inconsistent with
+    prior behavior, the function incorporates feedback to help resolve discrepancies.
 
     Args:
         client: OpenAI client.
-        character_profiles: Dictionary mapping character names to profiles (built from summaries).
-        scene_description: Description of the current scene.
-        num_scenes: Number of previous scenes to consider (default = 1).
-        is_consistent: Whether the scene passed the character consistency check.
-        consistency_result: The LLM’s consistency explanation/suggestions, if inconsistent.
+        character_profiles: Dictionary mapping character names to profile data
+                            (including summaries and extracted traits).
+        scene_description: Text description of the planned scene.
+        num_scenes: Number of previous scenes used to generate the character profiles.
+        is_consistent: Whether the character behavior in the scene is consistent.
+        consistency_result: Feedback from consistency evaluation (used if inconsistent).
+        model: Language model to use (default: "gpt-4").
+        temperature: Sampling temperature for creative variation (default: 0.7).
+        top_p: Nucleus sampling parameter (default: 0.9).
 
     Returns:
-        str: Formatted string with two recommended character interactions.
+        str: A formatted list of exactly two interaction suggestions with justifications.
 
     Raises:
-        ValueError: If the API response is malformed or empty.
-        Exception: For general runtime or API-related errors.
+        ValueError: If the API response is empty or malformed.
+        Exception: If the API fails after 3 retry attempts.
     """
-    try:
-        profiles_text = "\n\n".join([
-            f"Character: {char}\n{profile_data['profile']}"
-            for char, profile_data in character_profiles.items()
-        ])
+    profiles_text = "\n\n".join([
+        f"Character: {char}\n{profile_data['profile']}"
+        for char, profile_data in character_profiles.items()
+    ])
 
-        # Add consistency context if applicable
-        consistency_context = (
-            f"\n\nNote: The current scene was flagged as inconsistent.\n"
-            f"Here is the critique provided:\n{consistency_result.strip()}\n\n"
-            f"Use this to help adjust or refine the interactions to improve character alignment."
-            if not is_consistent else ""
-        )
+    consistency_context = (
+        f"\n\nNote: The current scene was flagged as inconsistent.\n"
+        f"Here is the critique provided:\n{consistency_result.strip()}\n\n"
+        f"Use this to help adjust or refine the interactions to improve character alignment."
+        if not is_consistent else ""
+    )
 
-        prompt = f"""
+    prompt = f"""
 You are the Co-Executive Producer on the sitcom writing team.
 
 You will suggest **exactly two meaningful character interactions** for the following scene.
@@ -334,21 +389,26 @@ Instructions:
 - Keep each suggestion concise—around 2–3 sentences—and justify clearly.
 
 Format your response like this:
-1. — (justification referencing prior scene(s))
-2. — (justification referencing prior scene(s))
+Interaction Recommendations:
+1. [Suggestion] — (justification referencing prior scene(s))
+2. [Suggestion] — (justification referencing prior scene(s))
 """
 
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            top_p=0.9
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        return response.choices[0].message.content.strip()
+            return response.choices[0].message.content.strip()
 
-    except Exception as e:
-        raise Exception(f"Error generating character interaction recommendations: {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error generating character interaction recommendations: {str(e)}")
+            time.sleep(2 ** attempt)

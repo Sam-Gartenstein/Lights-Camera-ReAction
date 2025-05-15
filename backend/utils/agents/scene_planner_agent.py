@@ -1,4 +1,5 @@
 
+import time
 from typing import List
 
 class ScenePlannerAgent:
@@ -20,17 +21,32 @@ class ScenePlannerAgent:
         scene_number: int
     ) -> str:
         """
-        Synthesizes a concise next-scene plan based on the suggestions from all ReAct agents.
+        Synthesizes a next-scene plan by combining recommendations from character, comedy,
+        and environment agents into a cohesive and sitcom-appropriate plan.
 
-        Rather than copying existing recommendations, the Executive Producer role is to rephrase and
-        distill feedback into 4 concrete, meaningful, and sitcom-appropriate objectives.
+        The scene plan includes:
+        - Two specific character goals
+        - One focused comedic beat
+        - One environmental detail that supports story or humor
+        - One creative narrative suggestion to guide progression
+
+        This function is structured to simulate the reasoning of an Executive Producer who is
+        filtering and rephrasing agent feedback into actionable direction for a writers' room.
+
+        Includes retry logic (up to 3 attempts with exponential backoff) to handle transient failures.
+
+        Args:
+            character_recommendations (str): Feedback from the Character Agent.
+            comedic_recommendations (str): Feedback from the Comedic Agent.
+            environment_recommendations (str): Feedback from the Environment Agent.
+            scene_number (int): The index of the scene to be planned.
 
         Returns:
-            str: A scene plan in structured bullet-point format.
+            str: A formatted scene plan with clearly labeled goals and a creative suggestion.
 
         Raises:
             ValueError: If the API response is empty or malformed.
-            Exception: For general API-related errors.
+            Exception: After 3 failed retry attempts or other runtime issues.
         """
         prompt = f"""
 You are the Executive Producer of a sitcom. Your agents have just provided feedback on Scene {scene_number}.
@@ -72,22 +88,25 @@ Creative Suggestion:
 - [Suggestion]
 """
 
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                top_p=0.9
-            )
+        for attempt in range(3):
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    top_p=0.9
+                )
 
-            if not response or not response.choices or not response.choices[0].message.content:
-                raise ValueError("Received an empty or malformed scene plan response.")
+                if not response or not response.choices or not response.choices[0].message.content:
+                    raise ValueError("Received an empty or malformed scene plan response.")
 
-            scene_plan = response.choices[0].message.content.strip()
-            self.internal_thoughts.append(f"✅ Scene {scene_number} plan generated successfully.")
-            return scene_plan
+                scene_plan = response.choices[0].message.content.strip()
+                self.internal_thoughts.append(f"✅ Scene {scene_number} plan generated successfully.")
+                return scene_plan
 
-        except Exception as e:
-            error_msg = f"❌ Failed to generate scene plan for Scene {scene_number}: {str(e)}"
-            self.internal_thoughts.append(error_msg)
-            raise Exception(error_msg)
+            except Exception as e:
+                if attempt == 2:
+                    error_msg = f"❌ Failed to generate scene plan for Scene {scene_number}: {str(e)}"
+                    self.internal_thoughts.append(error_msg)
+                    raise Exception(error_msg)
+                time.sleep(2 ** attempt)

@@ -1,5 +1,6 @@
 
 from typing import Dict, List, Tuple
+import time
 
 def analyze_and_verify_comedic_consistency(
     client,
@@ -8,23 +9,40 @@ def analyze_and_verify_comedic_consistency(
     max_scenes=3
 ) -> Tuple[bool, str]:
     """
-    Analyze comedic tone, verify consistency with prior scenes, and check for overused jokes,
-    from the perspective of a professional comedy writer who specializes in punch-up work.
+    Analyzes the comedic tone of a new scene and verifies whether it is consistent with
+    the tone, pacing, and recurring jokes from recent scenes.
+
+    This function prompts the model to act as a sitcom punch-up writer, evaluating:
+    - Alignment of comedic tone with prior scenes
+    - Use and potential overuse of running gags or comedic devices
+    - Natural progression of humor without disruption to character or scene flow
+
+    It uses up to `max_scenes` of prior scene metadata (including summaries and recurring jokes)
+    and returns a consistency verdict along with structured sitcom-specific feedback.
+
+    Includes retry logic (up to 3 attempts with exponential backoff) to handle transient failures.
 
     Args:
         client: OpenAI client instance.
-        prior_scene_metadata (List[Dict]): List of scene metadata including summary and running jokes.
-        scene_description (str): Description of the current scene.
-        max_scenes (int): Number of prior scenes to consider (default = 3).
+        prior_scene_metadata (List[Dict]): List of recent scene metadata dictionaries containing:
+            - 'summary' (str): Concise scene summary.
+            - 'recurring_joke' (List[str] or str): Recurring joke(s) from each scene.
+        scene_description (str): Text description of the scene being evaluated.
+        max_scenes (int): Number of most recent scenes to consider for comparison (default: 3).
 
     Returns:
         Tuple[bool, str]:
-            - is_consistent (bool): Whether the new scene aligns with prior comedic tone and jokes.
-            - full_analysis_text (str): Structured explanation of tone, consistency, and joke usage.
+            - bool: True if the scene's comedic tone and joke usage are consistent with prior scenes.
+            - str: Full structured analysis from the model, formatted as:
+                1. Detected Tone: [tone]
+                2. Consistency Verdict (Yes/No)
+                3. Short Explanation (max 5 lines)
+                4. Overuse Check: [None / Overused Joke(s): list]
+                5. Specific Suggestions if inconsistencies or overuse exist
 
     Raises:
-        ValueError: If the API response is malformed or empty.
-        Exception: For general runtime or API-related issues.
+        ValueError: If the API response is empty or malformed.
+        Exception: After 3 failed retry attempts or other runtime issues.
     """
     try:
         # Pull prior summaries and recurring jokes
@@ -90,21 +108,32 @@ def recommend_comedic_improvements(
     consistency_result=""
 ) -> str:
     """
-    Suggests two ways to enhance humor naturally for a given scene.
-    If the scene is flagged as tonally inconsistent, suggestions may focus on fixing tone issues.
+    Suggests two grounded comedic improvements for a sitcom scene, based on the scene description
+    and its comedic tone evaluation.
+
+    This function prompts the model to act as a Co-Executive Producer focused on punch-up work.
+    It generates two humor enhancements that are natural, character-driven, and appropriate for
+    sitcom pacing. If the scene was flagged as inconsistent (`is_consistent=False`), the suggestions
+    aim to realign the scene’s tone while preserving intent and comedic rhythm.
+
+    Includes retry logic (up to 3 attempts with exponential backoff) to handle transient failures.
 
     Args:
         client: OpenAI client instance.
-        scene_description (str): The full description of the scene to improve.
+        scene_description (str): Text description of the current scene to improve.
         is_consistent (bool): Whether the scene passed the comedic tone check.
-        consistency_result (str): Explanation of tonal inconsistency, if any.
+        consistency_result (str): Critique or analysis explaining tonal inconsistency, if applicable.
 
     Returns:
-        str: Recommended comedic improvements formatted as two brief suggestions.
+        str: Formatted string containing two sitcom-appropriate improvement suggestions with rationale:
+
+            Interaction Recommendations:
+            1. [Suggestion] — (justification referencing prior scene(s))
+            2. [Suggestion] — (justification referencing prior scene(s))
 
     Raises:
         ValueError: If the API response is malformed or empty.
-        Exception: For general runtime or API-related errors.
+        Exception: After 3 failed retry attempts or other runtime issues.
     """
     try:
         # Include critique context if the scene was flagged as inconsistent
@@ -132,8 +161,9 @@ Tasks:
 - Keep suggestions short, sitcom-appropriate (2–3 min scene).
 
 Format:
-1. — (justification referencing prior scene(s))
-2. — (justification referencing prior scene(s))
+Interaction Recommendations:
+1. [Suggestion] — (justification referencing prior scene(s))
+2. [Suggestion] — (justification referencing prior scene(s))
 """
 
         response = client.chat.completions.create(

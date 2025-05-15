@@ -1,28 +1,35 @@
 
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import time
 
-
-def summarize_scene(client, sitcom_title, scene_script):
+def summarize_scene(client, sitcom_title, scene_script, model="gpt-4", temperature=0.4, top_p=1.0):
     """
-    Summarizes a sitcom scene and extracts structured metadata.
+    Summarizes a sitcom scene and extracts structured metadata using the OpenAI API.
+
+    This function parses a scene into key information such as summary, characters,
+    setting, recurring jokes, and emotional tone. It includes retry logic to handle
+    transient failures robustly (up to 3 attempts with exponential backoff).
 
     Args:
-        client: OpenAI client instance
-        sitcom_title (str): Title of the sitcom
-        scene_script (str): Full text of the generated scene
+        client: OpenAI client instance.
+        sitcom_title (str): Title of the sitcom.
+        scene_script (str): Full text of the generated scene.
+        model (str): OpenAI model to use (default: "gpt-4").
+        temperature (float): Sampling temperature for output creativity (default: 0.4).
+        top_p (float): Nucleus sampling parameter (default: 1.0).
 
     Returns:
-        dict with keys:
-            - summary (str)
-            - characters (list of str)
-            - location (str or None)
-            - recurring_joke (str or None)
-            - emotional_tone (str)
+        dict with the following keys:
+            - 'summary': A concise 100–150 word summary of the scene (str)
+            - 'characters': A list of character names who appear in the scene (List[str])
+            - 'location': The primary location of the scene or "Unknown" (str)
+            - 'recurring_joke': A description of any callback or recurring joke, or "None" (str)
+            - 'emotional_tone': One or two words capturing the emotional tone (str)
 
     Raises:
         ValueError: If the API response is empty or incorrectly formatted.
-        Exception: For general runtime or API-related errors.
+        Exception: If the API fails after 3 retry attempts or any other runtime issue.
     """
     prompt = f"""
 You are the head writer of a sitcom called "{sitcom_title}".
@@ -65,45 +72,47 @@ Scene:
 {scene_script}
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            top_p=1
-        )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                top_p=top_p
+            )
 
-        if not response or not response.choices or not response.choices[0].message.content:
-            raise ValueError("Received an empty or malformed response from the API.")
+            if not response or not response.choices or not response.choices[0].message.content:
+                raise ValueError("Received an empty or malformed response from the API.")
 
-        output = response.choices[0].message.content.strip()
+            output = response.choices[0].message.content.strip()
 
-        # Basic parsing
-        sections = output.split("\n\n")
-        parsed = {
-            "summary": "",
-            "characters": [],
-            "location": None,
-            "recurring_joke": None,
-            "emotional_tone": None
-        }
+            sections = output.split("\n\n")
+            parsed = {
+                "summary": "",
+                "characters": [],
+                "location": None,
+                "recurring_joke": None,
+                "emotional_tone": None
+            }
 
-        for section in sections:
-            if section.startswith("Summary:"):
-                parsed["summary"] = section.replace("Summary:", "").strip()
-            elif section.startswith("Characters:"):
-                parsed["characters"] = [line.strip("- ").strip() for line in section.splitlines()[1:] if line.strip()]
-            elif section.startswith("Location:"):
-                parsed["location"] = section.replace("Location:", "").strip()
-            elif section.startswith("Recurring Joke:"):
-                parsed["recurring_joke"] = section.replace("Recurring Joke:", "").strip()
-            elif section.startswith("Emotional Tone:"):
-                parsed["emotional_tone"] = section.replace("Emotional Tone:", "").strip()
+            for section in sections:
+                if section.startswith("Summary:"):
+                    parsed["summary"] = section.replace("Summary:", "").strip()
+                elif section.startswith("Characters:"):
+                    parsed["characters"] = [line.strip("- ").strip() for line in section.splitlines()[1:] if line.strip()]
+                elif section.startswith("Location:"):
+                    parsed["location"] = section.replace("Location:", "").strip()
+                elif section.startswith("Recurring Joke:"):
+                    parsed["recurring_joke"] = section.replace("Recurring Joke:", "").strip()
+                elif section.startswith("Emotional Tone:"):
+                    parsed["emotional_tone"] = section.replace("Emotional Tone:", "").strip()
 
-        return parsed
+            return parsed
 
-    except Exception as e:
-        raise Exception(f"Error summarizing scene: {str(e)}")
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(f"Error summarizing scene: {str(e)}")
+            time.sleep(2 ** attempt)
 
 
 def add_scene_to_vector_db(scene_metadata, full_script=None, embedding_model=None, index=None, vector_metadata=None):

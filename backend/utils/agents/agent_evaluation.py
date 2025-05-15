@@ -120,7 +120,7 @@ def evaluate_comedic_agent_scene(
 
 
 def evaluate_environment_agent_scene(
-    agent: EnvironmentAgent,
+    agent,
     scene_description: str,
     scene_number: int
 ) -> Tuple[Dict, bool, str, str, List[str]]:
