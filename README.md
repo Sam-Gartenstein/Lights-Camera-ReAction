@@ -1,20 +1,65 @@
-# lights-camera-reACTion
+# Lights, Camera, ReAction Functions
 
-1. Generates a Sitcom Concept based off key words (`generate_sitcom_pitch`)
-2. Generates an outline via `sitcom_pitch`
-3. Validates scene cohesion using `validate_episode_outline`
-4. Generates Scene 1
-   a. Takes `scene_1_desc` from `extract_scene` function
-   b. Takes `sitcom_title` from `extract_title` function
-5. Edits the script via `edit_scene_script`
-6. Gets the scene meta data via `summarize_scene`
-7. Adds it to VB via `add_scene_to_vector_db`
-8. Generates Scene 2 using the meta stored in the vector_bd with `generate_scene_with_context` function
+This notebook builds a full **sitcom script generation pipeline** powered by **ReAct-based agents** — a powerful framework that combines **reasoning** (thinking through a problem) with **acting** (taking structured steps).
 
-**TODO**
+We start by **generating a sitcom concept** from creative keywords, then **outlining** the pilot episode scene-by-scene.  
+**Scene 1** is generated directly from the outline to establish the world and tone.  
+After that, each new scene is **scripted, reviewed, and improved** using specialized **ReAct agents** — a **Character Agent**, **Comedy Agent**, and **Environment Agent** — that simulate a real sitcom writers' room.
 
-Implement a ReACT pipeline instead of purely using RAG 
-  - ReACT agents Character Consistency, Comedic Consistency, and Enviromental Consisency
-    - Each of these would have to take in some sort of metadata and/or scene description of the previous and one to generate to understand and we have it reason to itself why it will generate what it will generate!
--We just need to figure how to do this lol
--We also need to figure out how to add evaluation agents and whether or not it can take in all of the scene script (We will have the perplexity score)
+---
+
+**Benefits of using ReAct agents**:
+
+- **More structured and transparent thinking:** Agents reason step-by-step before making edits.
+- **Dynamic adaptation:** Agents flexibly plan the next creative moves based on scene history.
+- **Better long-term coherence:** Scenes evolve logically, with tracked character growth, running jokes, emotional arcs, and worldbuilding.
+
+---
+
+After generation, each scene is **summarized and stored in a vector database**, enabling fast retrieval of scene metadata for future story planning.  
+By combining **structured agent workflows** and **retrieval-augmented memory**, we bring sitcom worlds to life — one coherent, character-driven scene at a time.
+
+## Step-by-Step Guide for Web Application
+
+**Follow these steps to get started and troubleshoot common issues:**
+
+### 1. Clear Installation Instructions
+- Clone the repository:
+  ```bash
+  git clone https://github.com/Sam-Gartenstein/lights-camera-reACTion.git
+  cd lights-camera-reACTion
+  ```
+- Install Python dependencies:
+  ```bash
+  pip install -r requirements.txt
+  ```
+- (If using the frontend) Install Node.js dependencies:
+  ```bash
+  npm install
+  ```
+
+### 2. Environment Setup Guide
+- Copy the example environment file and add your OpenAI API key:
+  ```bash
+  cp .env.example .env
+  ```
+- Edit `.env` and set your `OPENAI_API_KEY`.
+
+### 3. Usage Examples and Demonstrations
+- **Run the backend Flask server:**
+  ```bash
+  cd backend
+  python app.py
+  ```
+- **(Optional) Run the frontend React app:**
+  ```bash
+  npm start
+  ```
+- Use the provided Jupyter notebook or API endpoints to generate sitcom concepts, outlines, and scripts.
+
+### 4. Troubleshooting Guide
+- **Common issues:**
+  - *Module not found*: Ensure all dependencies are installed.
+  - *API errors*: Check your OpenAI API key and internet connection.
+  - *Port conflicts*: Make sure ports 5000 (backend) and 3000 (frontend) are free.
+  - *File not ignored by git*: Double-check your `.gitignore` and use `git rm --cached <file>` if needed.
