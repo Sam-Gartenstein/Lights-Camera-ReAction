@@ -35,24 +35,32 @@ def generate_concept():
     api_key = data.get('apiKey')
     keywords = data.get('keywords')
     
+    # Handle both dict and list for keywords
+    if isinstance(keywords, list):
+        keywords = {"keywords": keywords}
+    if not isinstance(keywords, dict):
+        return jsonify({'error': 'Keywords must be a dictionary or list'}), 400
+    
     if not api_key:
         return jsonify({'error': 'Missing required fields'}), 400
     
     try:
         client = openai.OpenAI(api_key=api_key)
         # Flatten keywords dict to a list
-        keyword_list = []
+        keywords_dict = {}
         for category, words in keywords.items():
             if isinstance(words, list):
-                keyword_list.extend(words)
+                keywords_dict[category] = [w.strip() for w in words if w.strip()]
             elif isinstance(words, str):
-                keyword_list.extend([w.strip() for w in words.split(',') if w.strip()])
-        # Pass None if no keywords entered
-        if not keyword_list:
-            keyword_arg = None
-        else:
-            keyword_arg = keyword_list
-        sitcom_pitch = generate_sitcom_pitch(client, keyword_arg)
+                keywords_dict[category] = [w.strip() for w in words.split(',') if w.strip()]
+            else:
+                keywords_dict[category] = []
+
+        # Pass None if all lists are empty
+        if not any(keywords_dict.values()):
+            keywords_dict = None
+
+        sitcom_pitch = generate_sitcom_pitch(client, keywords_dict)
         return jsonify({'concept': sitcom_pitch})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -207,7 +215,6 @@ def scene_writers_room(scene_number):
         client = openai.OpenAI(api_key=api_key)
         # Extract scene description
         scene_desc = extract_scene(outline, scene_number + 1)  # Get next scene's description
-        
         # Character Agent
         character_agent = CharacterAgent(
             client=client,
@@ -217,8 +224,7 @@ def scene_writers_room(scene_number):
         character_histories, char_is_consistent, char_explanation, char_recommendations, char_thoughts = character_agent.run(
             scene_description=scene_desc,
             scene_number=scene_number + 1
-        )
-        
+        )        
         # Comedic Agent
         comedic_agent = ComedicAgent(
             client=client,
@@ -240,7 +246,6 @@ def scene_writers_room(scene_number):
             scene_description=scene_desc,
             scene_number=scene_number + 1
         )
-        
         return jsonify({
             'character': {
                 'is_consistent': char_is_consistent,
@@ -258,6 +263,7 @@ def scene_writers_room(scene_number):
                 'is_consistent': env_is_consistent,
                 'explanation': env_explanation,
                 'details_suggestions': env_recommendations,
+                'thoughts': env_thoughts
             }
         })
     except Exception as e:
