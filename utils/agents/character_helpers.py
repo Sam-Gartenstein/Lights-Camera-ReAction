@@ -1,5 +1,5 @@
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import time
 
 def characters_extraction(
