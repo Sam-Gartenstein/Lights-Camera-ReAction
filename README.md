@@ -18,6 +18,27 @@ Each generated scene is summarized and stored in a vector database, enabling fas
 
 ---
 
+## Notebooks and Instructions
+
+`Lights Camera ReAction`: This notebook builds a full sitcom script generation pipeline powered by ReAct-based agents, a framework that combines reasoning (thinking through a problem) with acting (taking structured steps).
+
+`Baseline Workflow`: This notebook implements the baseline workflow. Each scene is generated independently using only its description from the episode outline and a rolling window of up to three previously generated scripts.
+
+`Sitcom Script Evaluation`: This notebook evaluates pilot episodes of a sitcom generated using two different approaches: a baseline model and a ReAct-based multi-agent system.
+
+For optimal use, download the notebooks and the `utils` directory to your Google Drive, and open the notebooks in **Google Colab**. The necessary `sys.path.append` lines are already included in each notebook. You only need to **update the existing paths** to match the location of your project files in your Drive:
+
+```python
+sys.path.append("/content/drive/MyDrive/path-to-your-project/utils")
+sys.path.append("/content/drive/MyDrive/path-to-your-project/utils/agents")
+```
+
+Make sure to replace `"path-to-your-project"` with the actual folder name where the repository is stored in your Drive.
+
+This pipeline uses `gpt-4` as the baseline language model. To run the notebooks, you'll need access to the OpenAI API and a valid API key.
+
+---
+
 ## Step-by-Step Guide for Web Application
 
 **Follow these steps to get started and troubleshoot common issues:**
