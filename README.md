@@ -20,7 +20,7 @@ Each generated scene is summarized and stored in a vector database, enabling fas
 
 ## Notebooks and Instructions
 
-`Lights Camera ReAction`: This notebook builds a full sitcom script generation pipeline powered by ReAct-based agents, a framework that combines reasoning (thinking through a problem) with acting (taking structured steps).
+`Lights Camera ReAction`: This notebook builds a full sitcom script generation pipeline powered by ReAct-based agents, a framework that combines reasoning (thinking through a problem) with acting (taking structured steps). *Note*: This notebook cannot be viewed directly in GitHub. Please download or open it in Google Colab to view the full content.
 
 `Baseline Workflow`: This notebook implements the baseline workflow. Each scene is generated independently using only its description from the episode outline and a rolling window of up to three previously generated scripts.
 
